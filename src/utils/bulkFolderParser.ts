@@ -684,9 +684,24 @@ export function parseNgayLayDate(rawDateStr: string | undefined | null): string 
   if (!rawDateStr || !rawDateStr.trim()) return null;
   const s = rawDateStr.trim();
 
+  // Pattern 0: HH:mm[:ss] DD/MM/YYYY or HH:mm[:ss] DD-MM-YYYY (e.g. "20:45:13 7/7/2026")
+  const timeFirstMatch = s.match(
+    /^([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?\s*(?:-\s*)?([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
+  );
+  if (timeFirstMatch) {
+    const hour = parseInt(timeFirstMatch[1], 10);
+    const min = parseInt(timeFirstMatch[2], 10);
+    const sec = timeFirstMatch[3] ? parseInt(timeFirstMatch[3], 10) : 0;
+    const day = parseInt(timeFirstMatch[4], 10);
+    const month = parseInt(timeFirstMatch[5], 10);
+    const year = parseInt(timeFirstMatch[6], 10);
+    const dt = new Date(year, month - 1, day, hour, min, sec);
+    if (!isNaN(dt.getTime())) return dt.toISOString();
+  }
+
   // Pattern 1: DD/MM/YYYY [HH:mm[:ss]] or DD-MM-YYYY [HH:mm[:ss]]
   const dmyMatch = s.match(
-    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s+([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
+    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s*(?:-\s*)?([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
   );
   if (dmyMatch) {
     const day = parseInt(dmyMatch[1], 10);

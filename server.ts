@@ -132,9 +132,10 @@ function getCloudinaryConfig() {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
 // Global request logger for debugging
@@ -2295,8 +2296,21 @@ ALTER TABLE chu_nha_can_ban ADD COLUMN IF NOT EXISTS district text;
 function parseServerNgayLayDate(rawDateStr: string | undefined | null): string | null {
   if (!rawDateStr || typeof rawDateStr !== "string" || !rawDateStr.trim()) return null;
   const s = rawDateStr.trim();
+  const timeFirstMatch = s.match(
+    /^([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?\s*(?:-\s*)?([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
+  );
+  if (timeFirstMatch) {
+    const hour = parseInt(timeFirstMatch[1], 10);
+    const min = parseInt(timeFirstMatch[2], 10);
+    const sec = timeFirstMatch[3] ? parseInt(timeFirstMatch[3], 10) : 0;
+    const day = parseInt(timeFirstMatch[4], 10);
+    const month = parseInt(timeFirstMatch[5], 10);
+    const year = parseInt(timeFirstMatch[6], 10);
+    const dt = new Date(year, month - 1, day, hour, min, sec);
+    if (!isNaN(dt.getTime())) return dt.toISOString();
+  }
   const dmyMatch = s.match(
-    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s+([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
+    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s*(?:-\s*)?([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
   );
   if (dmyMatch) {
     const day = parseInt(dmyMatch[1], 10);
@@ -2311,6 +2325,83 @@ function parseServerNgayLayDate(rawDateStr: string | undefined | null): string |
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) return parsed.toISOString();
   return null;
+}
+
+function toNumericOrNull(val: any): number | null {
+  if (val === null || val === undefined || val === "") return null;
+  if (typeof val === "number") return !isNaN(val) && isFinite(val) ? val : null;
+  const cleaned = String(val)
+    .trim()
+    .replace(/,/g, ".")
+    .replace(/[^0-9.-]/g, "");
+  if (!cleaned) return null;
+  const num = parseFloat(cleaned);
+  return !isNaN(num) && isFinite(num) ? num : null;
+}
+
+const KNOWN_CHU_NHA_DB_COLUMNS = new Set<string>([
+  "id",
+  "name",
+  "phone",
+  "district",
+  "facebook_link",
+  "website_link",
+  "content",
+  "image_urls",
+  "loai_giao_dich",
+  "status",
+  "created_by",
+  "created_by_name",
+  "created_at",
+  "updated_at",
+  "ma_tk",
+  "loai_hinh",
+  "dia_chi",
+  "phuong",
+  "gia",
+  "dien_tich_so",
+  "dien_tich_thuc_te",
+  "rong",
+  "dai",
+  "so_tang",
+  "trang_thai_xu_ly",
+  "da_len_hometea",
+  "hometea_id",
+  "ngay_dang",
+  "da_xep_lich_fb",
+  "da_dang_fb",
+  "draft_hometea_title",
+  "draft_hometea_desc",
+  "draft_facebook_caption",
+  "draft_seo_title",
+  "draft_seo_desc",
+  "selected_images",
+  "anh_dai_dien",
+]);
+
+function sanitizeChuNhaDbPayload(rawPayload: Record<string, any>): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(rawPayload)) {
+    if (v === undefined) continue;
+    if (k === "da_xuat_hometea") {
+      clean.da_len_hometea = !!v;
+      continue;
+    }
+    if (k === "da_xuat_fb") {
+      clean.da_dang_fb = !!v;
+      continue;
+    }
+    if (!KNOWN_CHU_NHA_DB_COLUMNS.has(k) || unsupportedColumnsCache.has(k)) {
+      continue;
+    }
+    if (["gia", "dien_tich_so", "dien_tich_thuc_te", "rong", "dai", "so_tang"].includes(k)) {
+      const n = toNumericOrNull(v);
+      clean[k] = k === "gia" && n !== null ? Math.round(n) : n;
+    } else {
+      clean[k] = v;
+    }
+  }
+  return clean;
 }
 
 function extractNgayLayFromStoredRecord(row: any, meta?: Record<string, any> | null): {
@@ -2352,11 +2443,15 @@ async function upsertChuNhaCanBanByMaTk(
   payload: Record<string, any>,
   existingId?: string | null
 ): Promise<any> {
-  const workingPayload: Record<string, any> = {};
-  for (const [k, v] of Object.entries(payload)) {
-    if (!unsupportedColumnsCache.has(k) && v !== undefined) {
-      workingPayload[k] = v;
-    }
+  const workingPayload: Record<string, any> = sanitizeChuNhaDbPayload(payload);
+  if (!workingPayload.loai_giao_dich) {
+    workingPayload.loai_giao_dich = "khach_ban";
+  }
+  if (!workingPayload.status) {
+    workingPayload.status = "moi";
+  }
+  if (!workingPayload.name) {
+    workingPayload.name = String(payload.ma_tk || payload.dia_chi || "Nguồn nhà");
   }
 
   // Never touch protected export/draft columns during import
@@ -2503,7 +2598,7 @@ app.post("/api/properties/check-ma-tk", authenticateAdmin, async (req, res) => {
             }
             const nameUpper = String(row.name || "").toUpperCase();
             const contentUpper = String(row.content || "").toUpperCase();
-            for (const code of maTkSet) {
+            for (const code of Array.from(maTkSet)) {
               if (!existingMap[code]) {
                 if (
                   nameUpper.startsWith(`${code}_`) ||
@@ -3530,11 +3625,32 @@ const handleUpdateProperty = async (req: any, res: any) => {
 
     try {
       const supabase = getSupabase();
+      const dbPayload = sanitizeChuNhaDbPayload(supabasePayload);
       let updateResult = await supabase
         .from("chu_nha_can_ban")
-        .update(supabasePayload)
+        .update(dbPayload)
         .eq("id", id)
         .select();
+
+      // If any column is still missing in Supabase, prune that column and retry before falling back to basePayload
+      for (let retry = 0; retry < 10 && updateResult.error; retry++) {
+        const errMsg =
+          String(updateResult.error.message || "") + " " + String(updateResult.error.details || "");
+        const colMatch1 = errMsg.match(/Could not find the '([^']+)' column/i);
+        const colMatch2 = errMsg.match(/column "([^"]+)" of relation "chu_nha_can_ban" does not exist/i);
+        const missingCol = colMatch1?.[1] || colMatch2?.[1];
+        if (missingCol && missingCol in dbPayload && missingCol !== "name") {
+          unsupportedColumnsCache.add(missingCol);
+          delete dbPayload[missingCol];
+          updateResult = await supabase
+            .from("chu_nha_can_ban")
+            .update(dbPayload)
+            .eq("id", id)
+            .select();
+        } else {
+          break;
+        }
+      }
 
       // If extended columns haven't been created in Supabase yet, fallback to base columns (meta tag in content preserves all fields)
       if (
@@ -3707,19 +3823,29 @@ app.post("/api/properties/bulk-action", authenticateAdmin, async (req: any, res)
           const withMeta = embedMetaInContent(c2.cleanContent, mergedMeta);
           const finalContent = embedCreatorInContent(withMeta, c1.creator);
 
-          const dbUpdate: Record<string, any> = {
+          const rawDbUpdate: Record<string, any> = {
             ...changes,
             content: finalContent,
             updated_at: new Date().toISOString(),
           };
           if (changes.phuong !== undefined) {
-            dbUpdate.district = changes.phuong;
+            rawDbUpdate.district = changes.phuong;
+          }
+          if (changes.so_nha !== undefined || changes.duong !== undefined) {
+            const sn = changes.so_nha !== undefined ? String(changes.so_nha || "").trim() : "";
+            const dg = changes.duong !== undefined ? String(changes.duong || "").trim() : "";
+            const combinedAddr = [sn, dg].filter(Boolean).join(" ").trim();
+            if (combinedAddr && !rawDbUpdate.dia_chi) {
+              rawDbUpdate.dia_chi = combinedAddr;
+            }
           }
           if (changes.trang_thai_kinh_doanh !== undefined) {
-            if (changes.trang_thai_kinh_doanh === "da_ban") dbUpdate.status = "da_ban";
-            else if (changes.trang_thai_kinh_doanh === "da_ky") dbUpdate.status = "da_ky";
-            else dbUpdate.status = "moi";
+            if (changes.trang_thai_kinh_doanh === "da_ban") rawDbUpdate.status = "da_ban";
+            else if (changes.trang_thai_kinh_doanh === "da_ky") rawDbUpdate.status = "da_ky";
+            else rawDbUpdate.status = "moi";
           }
+
+          const dbUpdate = sanitizeChuNhaDbPayload(rawDbUpdate);
 
           let { error: upErr } = await supabase
             .from("chu_nha_can_ban")

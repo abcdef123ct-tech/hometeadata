@@ -1,1 +1,947 @@
-{}
+{
+  "ee3a71cf-9b05-4327-bdab-cb6f55259e0b": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "d38146a8-f0fc-4a04-8507-1c2e9eeb19fb": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5ad958f6-7ee9-4086-8b93-ae5c195b724c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "84fd4f28-3365-43b9-a70e-1bd2c40e9f43": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "4af00697-2a95-4d17-a704-f8dae40cffd3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fb9c329a-dbd0-498d-acb5-290f0749051d": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "70808a99-77bb-4dca-bd9d-6d6b0c214e38": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "7dc14efe-d3ef-43ef-86a4-d552e2380abe": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "16b75a99-ef9d-4824-8fa9-b2d1e0d691e3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "4cef7f7b-8a40-4ffa-bb00-e963992039a8": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fac30f6d-67c3-4e3b-b602-40eacff74e35": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c2674631-b6b8-4be5-a92c-2c290af607a8": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fa27bfbf-e777-4650-8328-73635d2ae388": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5041b5be-9e6d-4f83-a254-3b2040fa9a70": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "7baf9265-e224-41e6-9f1f-91f24c98bddc": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5c7f60e0-f423-4819-a599-9a8199e63b87": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "4d0ea5bc-c9ff-4997-a010-fdbf524ec519": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fb53ed3e-d9be-4f94-8b21-d0c41f0d2df5": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "46a4dc91-d6ae-493a-b3f4-7a270ade55ad": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "410dabe6-bef8-4178-9506-3bdf7a9780df": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5e6cc726-ba36-4366-9dff-816fe2423fde": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ecf3cc32-5d01-48e5-b28a-d995c6e579d1": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "dd81c509-e714-4038-9ad2-e6375269e3ae": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5bd3917c-8460-4c99-a2f2-d4d4cf53e40b": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1c0b950b-03cd-48f1-86ce-a79976c79269": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "6487e433-e6f9-4b72-86e7-2d93614a5e2a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "59e5f6c4-b178-4d7b-ac8e-c8748bbd1652": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "4fbe9914-7054-4cda-9e54-bae604bfbb63": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "8c604617-82aa-4d2f-8886-cfac3c81e62a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "46e7014f-a94b-4923-a607-b08d611e063d": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "8e140c52-5c97-4ebf-afc3-9bfe5af8d196": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "94b9e9bc-376e-4500-97c5-6f16be470b0f": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c97b65d2-181e-4458-a0e7-fede247694f9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "399f5ade-bb6b-40d5-af74-4af484f2aba2": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "9c31208d-632d-4f2c-b779-36f090fa8599": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "30e2425e-985f-4872-bf62-de7039b33c93": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "61d211ad-9523-422f-a58f-eb1430ca1e48": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c0dfc206-d35c-4371-bb3a-fe07155a08d9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "a20612ad-477d-48f2-980e-bffc21cf6b76": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "992dd447-a437-40c9-8bf9-0973b7050af7": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "0c7eeaa4-c0eb-4cc7-8fb1-20608ca09938": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "15fcf52a-9247-473c-8146-2c1651878bc2": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ed6dc19f-6670-44a6-bdc6-ba0d21a66fea": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "326068b5-b4be-4f96-bc8e-7173c45a9d00": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5f8d1d51-7517-4cbc-9d1c-925b7ac5408c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2510c232-6482-4030-9747-d93003b0be65": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "59e7e162-9c84-4fcf-a595-9a5d7725e4cd": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "17d2fd40-be66-4e29-be4e-bc6527a37de8": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c5f08b9d-fb10-43d4-a1f5-de55b363732b": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "af4fdbec-5427-4ce8-a458-70d6bf345ad0": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "49bb0839-dbe2-494e-8385-e661b9acd185": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "6dc33d02-4194-43b8-873c-f08f531bc8b2": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "46098549-1798-42fa-bc86-c8da541d3593": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "03dd24d5-f7e4-4850-a678-3a5ee2032097": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c422c7a3-bd8d-4fed-be48-b49096469c53": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "6d86e48d-aa37-4dbe-8e11-da5f655ad673": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "e1c647b5-09a6-4da4-b70e-0756888f8660": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b87856de-0d74-43c3-bbd0-84d5c7cc9860": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c4ea5792-9a53-493d-aa88-f27973797fc3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2fdbe1b0-2830-4643-8e80-989ec73ff85a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b976eb38-6f79-474e-b85f-65eefc9a210e": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1c360a1c-9d7e-4ed5-8b64-140fb281f6e3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "f339627e-b6df-4d8a-8626-8bef8dc10a69": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "42eab9f9-ccbd-4e21-a228-6f00e22cebc6": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1f842020-cbcf-4691-8de3-bc20a7090ddd": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "60818db1-5d2e-417a-8c73-ccb2fbf3b41a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "7552170e-0422-41a7-a11b-5d8f4f3663c1": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2b770e6d-1abc-477d-96ec-f9030ebee6a3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1fb8fcd8-3277-4c0b-829d-a52ce9ff36d9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "e44841b6-efdc-433f-b222-e740c2c53c11": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "866c6906-873c-4714-9725-76ddac815ccc": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fbb80522-e053-4b29-95c0-a40974c8e850": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "29f03b50-f677-40dc-ad44-2dca23edbe78": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "30d05105-67e1-4a7a-8fd8-132039a74ab7": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "fa586360-3f4a-4387-9269-264a15dc765a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "5f798076-d8ec-44dd-b312-26345ab8e2c9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1563b30f-b335-411e-8c3e-45a2e6177e36": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ab1e32af-65ee-4912-9141-42b1cc637148": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "8f880b34-a069-4fe1-b950-349d93193ad5": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "8289e28f-382e-47e9-9cd5-91c8e73a048c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1461c359-d9dd-41ef-9ec8-3f544aa4e7a8": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "dbe30db2-3eb0-47cd-bca8-ba0570efacf5": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "a379d5bf-5c85-4bb5-b2b8-1fedcb328e60": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "83e115f6-5334-495e-9708-fad0a7bafb16": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1745ba3e-b091-4b31-8168-0ce0edd675e9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "076f0cd7-d7cb-4755-96ab-d117204dc958": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2404b497-f503-4a65-a908-de4d0e2f25e2": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b3ceeac4-4d26-4989-b7d9-08d56c1f9d81": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "05aefa51-b670-4096-99cc-38fb0c2d7179": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b23a8353-dfcf-49a6-8751-7f6a62974e54": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ebd70b5f-92e3-4fdc-ba6c-2e3dc12e5fb1": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "87dba5f9-f636-484b-8518-6923a04a0499": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "28cf17a1-f557-4f45-ae94-e212e78d7ebe": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "e3eb9448-c4a1-4420-a0d0-2fa3b5f8602f": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "91e07a15-bef2-473d-a78b-718caeddeef9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "d85940cb-fe7f-43c2-bea0-f7dc88e4ca53": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "bd2e2f92-49c5-4d79-bfaf-afda7be49f38": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "aa70283e-0a38-49f5-a534-4bebb097e7c2": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "3911c6f8-2e32-4754-8370-6c63adf4a5c9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b4db8db4-75f8-4993-a801-a64a7b0bc929": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "b0b45ab5-d25b-45a1-a42d-62668812e1f1": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "1f36e6d2-cf5f-45e6-9ff7-f54c9332722f": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "3c4461a8-de9f-4a96-847a-aabb5f7b285a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "357df43f-efd6-4e32-ac3d-82737693ccec": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "20d4f77c-cdfa-481b-9abf-c1c7e5a24093": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ef694da8-b857-4c7e-8558-8bcc0a41450b": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "9fc2f71c-6826-49c2-8c2b-77b651c5c1ea": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "da5440b1-151e-4261-a8ef-af618adfe2c4": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "9542a174-d5b9-4153-939c-fb80d0c702fd": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "7d55c091-c1cb-4244-9d09-07aa49df0563": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "bf6e925b-ca30-4da5-8ac6-5607d8f2717a": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "a439eebf-e9d4-48c8-a5ff-043f8bfd50fd": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "3277811f-7ff0-41ba-8a3e-d2a955e4369b": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "885cc622-fae0-43a5-bc83-82f346c6d8d4": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "a46ea881-58ba-485e-89db-e57c08bfe647": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "67b0eff2-2090-4b75-b5d7-a82a3a31e8d3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "6438f8d5-a9f0-469a-bc93-3ff7f2f2bc5c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2933704b-6d14-409a-bdeb-a03dc30d9307": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "0226144a-75db-4492-a418-fe095ff1e562": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "68cda4b8-6958-48f3-bfbc-4bea0e7e4383": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "610c0fed-a69d-421a-8f0c-a7b5d7ba616d": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "7b9bd184-254d-4fa1-9e17-0e600caf32df": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "e99bdab6-90c4-42d3-8623-c1e32ddfcae3": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "ee363bfe-1d6a-46be-890d-285e9e222857": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "d17e077b-b051-419b-be23-455879590934": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "942a2582-4d2f-4590-9ca4-ba6e7479e107": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "58bc87d7-50ab-4227-b543-03fb2a1d6d7e": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "86fc033e-5b11-40b2-8e7c-d424acfbf4c9": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "316a57f6-8a0d-4ac8-9083-f190114e829c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "a9bf2d4b-059a-4d22-ac33-1b3e6e00509c": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "2e4c8ce3-71af-41f1-b66a-ee00ee12aaf5": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "e54cbd35-9680-4a0f-b8ee-f1ccdd824306": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "0f4ea908-2e8d-4ffc-a054-f925b4cbc7c7": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "c4fb76f9-00dc-43ff-a1df-e13358963864": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  },
+  "183a88ac-b879-4f8f-bce7-b0313c9bcec5": {
+    "created_by": "master-admin",
+    "created_by_name": "Quản Trị Viên Hệ Thống",
+    "created_by_phone": "",
+    "created_by_email": "admin@nguonnhapk.local",
+    "created_by_role": "admin"
+  }
+}

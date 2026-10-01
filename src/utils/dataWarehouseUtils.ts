@@ -245,38 +245,85 @@ export function normalizePropertyRecord(
   const rawDiaChi = String(prop.dia_chi || "").trim();
   let phuong = String(prop.phuong || prop.district || "").trim();
 
-  if (!so_nha && !duong && rawDiaChi) {
-    const hemMatch = rawDiaChi.match(/^(hẻm|ngõ|số)\s+([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/i);
-    const numMatch = rawDiaChi.match(/^([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/);
-    if (hemMatch) {
-      so_nha = `${hemMatch[1]} ${hemMatch[2]}`.replace(/\./g, "/");
-      duong = hemMatch[3].trim();
-    } else if (numMatch && !/^(đường|phố|kdc|quốc\s*lộ|tỉnh\s*lộ)\b/i.test(rawDiaChi)) {
-      so_nha = numMatch[1].replace(/\./g, "/");
-      duong = numMatch[2].trim();
-    } else {
-      duong = rawDiaChi;
-    }
+  // Strip trailing ", <phuong>" from dia_chi if present so duong doesn't duplicate phuong
+  let cleanDiaChi = rawDiaChi;
+  if (cleanDiaChi && phuong) {
+    const escapedPhuong = phuong.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    cleanDiaChi = cleanDiaChi.replace(new RegExp(`\\s*,\\s*${escapedPhuong}\\s*$`, "i"), "").trim();
   }
 
-  if (!so_nha && !duong) {
-    if (folderParsed && (folderParsed.so_nha || folderParsed.duong)) {
-      so_nha = folderParsed.so_nha || "";
-      duong = folderParsed.duong || "";
-    } else if (parsedLegacy.cleanAddress) {
-      const addr = parsedLegacy.cleanAddress.trim();
-      const hemMatch = addr.match(/^(hẻm|ngõ|số)\s+([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/i);
-      const numMatch = addr.match(/^([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/);
-      if (hemMatch) {
-        so_nha = `${hemMatch[1]} ${hemMatch[2]}`.replace(/\./g, "/");
-        duong = hemMatch[3].trim();
-      } else if (numMatch && !/^(đường|phố|kdc|quốc\s*lộ|tỉnh\s*lộ)\b/i.test(addr)) {
-        so_nha = numMatch[1].replace(/\./g, "/");
-        duong = numMatch[2].trim();
-      } else {
-        duong = addr;
+  const splitDiaChiIntoParts = (addrStr: string): { so_nha: string; duong: string } => {
+    const s = addrStr.trim();
+    if (!s) return { so_nha: "", duong: "" };
+
+    // Case A: Land plot "Thửa xxx, Tờ yyy [(Lô ...)] <Street>"
+    if (/\b(thửa|tờ)\b/i.test(s)) {
+      let working = s;
+      const plotParts: string[] = [];
+      const thuaMatch = working.match(/\bthửa(?:\s*số)?[\s.:_-]*([0-9A-Za-z/-]+)/i);
+      if (thuaMatch) {
+        plotParts.push(`Thửa ${thuaMatch[1].replace(/\./g, "/")}`);
+        working = working.replace(thuaMatch[0], " ").trim();
+      }
+      const toMatch = working.match(/\btờ(?:\s*bản\s*đồ)?(?:\s*số)?[\s.:_-]*([0-9A-Za-z/-]+)/i);
+      if (toMatch) {
+        plotParts.push(`Tờ ${toMatch[1].replace(/\./g, "/")}`);
+        working = working.replace(toMatch[0], " ").trim();
+      }
+      working = working.replace(/^[\s.,/-]+|[\s.,/-]+$/g, "").replace(/\s{2,}/g, " ").trim();
+      if (plotParts.length > 0) {
+        return {
+          so_nha: plotParts.join(", "),
+          duong: working || s,
+        };
       }
     }
+
+    // Case B: "Hẻm 230 Lò Lu", "Kế nhà 228 Lò Lu", "Số 32 Đường 4"
+    const prefixMatch = s.match(
+      /^(hẻm|ngõ|kiệt|số|kế\s*nhà|cạnh\s*nhà|đối\s*diện|lô)\s+([0-9A-Za-z./-]+)\s+(.+)$/i
+    );
+    if (prefixMatch) {
+      return {
+        so_nha: `${prefixMatch[1]} ${prefixMatch[2]}`.replace(/\./g, "/").trim(),
+        duong: prefixMatch[3].trim(),
+      };
+    }
+
+    // Case C: House number at start e.g. "17/21 Long Thuận" or "36F2VP2 đường 18"
+    const numMatch = s.match(/^([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/);
+    if (numMatch && !/^(đường|phố|kdc|quốc\s*lộ|tỉnh\s*lộ)\b/i.test(s)) {
+      return {
+        so_nha: numMatch[1].replace(/\./g, "/").trim(),
+        duong: numMatch[2].trim(),
+      };
+    }
+
+    return { so_nha: "", duong: s };
+  };
+
+  if (!so_nha && !duong && cleanDiaChi) {
+    const split = splitDiaChiIntoParts(cleanDiaChi);
+    so_nha = split.so_nha;
+    duong = split.duong;
+  }
+
+  // Fallback to folderParsed or parsedLegacy if so_nha or duong is still empty
+  if ((!so_nha || !duong) && folderParsed && (folderParsed.so_nha || folderParsed.duong)) {
+    if (!so_nha && folderParsed.so_nha) so_nha = folderParsed.so_nha;
+    if (!duong && folderParsed.duong) duong = folderParsed.duong;
+  }
+
+  if (!so_nha && !duong && parsedLegacy.cleanAddress) {
+    const split = splitDiaChiIntoParts(parsedLegacy.cleanAddress);
+    so_nha = split.so_nha;
+    duong = split.duong;
+  }
+
+  // Strip trailing ", <phuong>" from duong if present
+  if (duong && phuong) {
+    const escapedPhuong = phuong.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    duong = duong.replace(new RegExp(`\\s*,\\s*${escapedPhuong}\\s*$`, "i"), "").trim();
   }
 
   // 3. Diện tích: dien_tich_so & dien_tich_thuc_te
@@ -453,13 +500,16 @@ export function normalizePropertyRecord(
     }
   };
 
+  const isNhaPho =
+    loai_hinh.toLowerCase() === "nhà phố" || loai_hinh.toLowerCase() === "nha pho";
+
   checkMissing("ma_tk", !isLegacyOrMissingMaTk);
   checkMissing("so_nha", !!so_nha);
   checkMissing("duong", !!duong);
   checkMissing("phuong", !!phuong);
   checkMissing("dien_tich_so", dien_tich_so !== null && dien_tich_so > 0);
   checkMissing("dien_tich_thuc_te", dien_tich_thuc_te !== null && dien_tich_thuc_te > 0);
-  checkMissing("so_tang", !!so_tang);
+  checkMissing("so_tang", !isNhaPho || !!so_tang);
   checkMissing("rong", !!rong);
   checkMissing("dai", !!dai);
   checkMissing("gia", gia !== null && gia > 0);
@@ -483,8 +533,8 @@ export function normalizePropertyRecord(
     trang_thai_kinh_doanh = "nguon_tho";
   }
 
-  let da_xuat_hometea = !!prop.da_xuat_hometea;
-  let da_xuat_fb = !!prop.da_xuat_fb;
+  let da_xuat_hometea = !!(prop.da_xuat_hometea || prop.da_len_hometea);
+  let da_xuat_fb = !!(prop.da_xuat_fb || prop.da_dang_fb);
 
   let trang_thai_xu_ly: ProcessingStatusType = "tho";
   if (
