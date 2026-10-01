@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border-color: #e2e8f0;
+  --accent-color: #f4a623;
+}
+
+:root.dark {
+  --bg-primary: #0b0f19;
+  --bg-secondary: #161f30;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --border-color: #243249;
+  --accent-color: #f4a623;
+}
+
+html {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Custom CSS helper utilities */
+.custom-bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.custom-bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.custom-text-primary {
+  color: var(--text-primary);
+}
+
+.custom-text-secondary {
+  color: var(--text-secondary);
+}
+
+.custom-border {
+  border-color: var(--border-color);
+}
+
+.custom-border-all {
+  border: 1px solid var(--border-color);
+}
+
+.custom-accent-bg {
+  background-color: var(--accent-color);
+}
+
+.custom-accent-text {
+  color: var(--accent-color);
+}

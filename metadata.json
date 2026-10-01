@@ -1,0 +1,8 @@
+{
+  "name": "nguonnhapk",
+  "description": "Hệ thống quản lý thông tin nguồn nhà, quản trị tài khoản, báo cáo thống kê & chẩn đoán hệ thống",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
