@@ -952,6 +952,17 @@ app.post("/api/login", async (req, res) => {
     return res.status(400).json({ error: "Vui lòng nhập mật khẩu" });
   }
 
+  const stripDiacritics = (str: string) =>
+    String(str || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .trim()
+      .toLowerCase();
+
+  const rawUserInput = String(username || email || "").trim();
+  const baseIdentifier = rawUserInput.toLowerCase().replace(/@nguonnhapk\.local$/i, "");
   let rawIdentifier = (email || username || "").trim().toLowerCase();
   if (rawIdentifier && !rawIdentifier.includes("@")) {
     rawIdentifier = `${rawIdentifier}@nguonnhapk.local`;
@@ -960,111 +971,167 @@ app.post("/api/login", async (req, res) => {
 
   try {
     const { url, key } = getSupabaseConfig();
+    let matchedProfileFromDb: any = null;
 
-    // 1. Try Supabase Auth if URL and Anon key are configured and email is provided
-    if (url && key && trimmedEmail) {
+    // 1. Try Supabase Auth if URL and Anon key are configured and identifier is provided
+    if (url && key && (trimmedEmail || baseIdentifier)) {
       const supabase = getSupabase();
       const dbClient = getSupabaseAdmin() || supabase;
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password: password
-      });
 
-      if (!error && data?.user) {
-        const user = data.user;
-
-        // Check user status in profiles table
-        let userProfile = null;
-        try {
-          const { data: profile } = await dbClient
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .maybeSingle();
-
-          if (profile) {
-            userProfile = profile;
-            if (profile.status === "disabled") {
-              return res.status(403).json({
-                error: "Tài khoản của bạn đã bị vô hiệu hóa bởi quản trị viên. Vui lòng liên hệ hỗ trợ."
-              });
-            }
-          } else {
-            // Automatically bootstrap profile record if not present
-            const defaultName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Quản trị viên";
-            const defaultRole = user.user_metadata?.role || "admin";
-            const { data: newProfile } = await dbClient
-              .from("profiles")
-              .upsert({
-                id: user.id,
-                email: user.email,
-                full_name: defaultName,
-                role: defaultRole,
-                status: "active"
-              })
-              .select()
-              .single();
-            userProfile = newProfile;
-          }
-        } catch (profileErr) {
-          console.warn("Lỗi kiểm tra bảng profiles:", profileErr);
+      // Resolve username / full_name / email prefix from profiles table if available
+      const candidateEmails: string[] = [];
+      const addCandidate = (em: string | undefined | null) => {
+        const clean = String(em || "").trim().toLowerCase();
+        if (clean && clean.includes("@") && !candidateEmails.includes(clean)) {
+          candidateEmails.push(clean);
         }
+      };
 
-        const fullName = userProfile?.full_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Quản trị viên";
-        const phone = userProfile?.phone || user.user_metadata?.phone || "";
-        const role = userProfile?.role || "admin";
-        const status = userProfile?.status || "active";
+      try {
+        const { data: allProfiles } = await dbClient.from("profiles").select("*");
+        if (Array.isArray(allProfiles) && allProfiles.length > 0) {
+          const normBase = stripDiacritics(baseIdentifier);
+          matchedProfileFromDb =
+            allProfiles.find((p: any) => String(p.email || "").trim().toLowerCase() === rawUserInput.toLowerCase()) ||
+            allProfiles.find((p: any) => String(p.email || "").trim().toLowerCase() === trimmedEmail) ||
+            allProfiles.find((p: any) => String(p.email || "").trim().toLowerCase().split("@")[0] === baseIdentifier) ||
+            allProfiles.find((p: any) => stripDiacritics(p.full_name || "") === normBase);
 
-        const token = jwt.sign(
-          {
-            id: user.id,
-            email: user.email,
-            full_name: fullName,
-            phone: phone,
-            role,
-            status
-          },
-          SESSION_SECRET,
-          { expiresIn: "7d" }
-        );
-
-        res.cookie("admin_token", token, {
-          httpOnly: true,
-          secure: true,
-          sameSite: "none",
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
-
-        return res.json({
-          success: true,
-          token: token,
-          message: "Đăng nhập thành công qua Supabase Auth",
-          user: {
-            id: user.id,
-            email: user.email,
-            full_name: fullName,
-            phone: phone,
-            role,
-            status
+          if (matchedProfileFromDb?.email) {
+            addCandidate(matchedProfileFromDb.email);
           }
-        });
+        }
+      } catch (_) {
+        // Ignore profile lookup errors prior to login
       }
 
-      // If Supabase Auth failed, log error details
-      if (error) {
-        console.log("Supabase Auth signIn failed:", error.message);
+      if (rawUserInput.includes("@")) {
+        addCandidate(rawUserInput);
+      }
+
+      const isMasterAdminShortcut =
+        Boolean(ADMIN_PASSWORD && password === ADMIN_PASSWORD) &&
+        (baseIdentifier === "admin" || baseIdentifier === "master-admin") &&
+        !matchedProfileFromDb;
+
+      if (!isMasterAdminShortcut) {
+        addCandidate(trimmedEmail);
+      }
+
+      for (const candidateEmail of candidateEmails) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: candidateEmail,
+          password: password
+        });
+
+        if (!error && data?.user) {
+          const user = data.user;
+
+          // Check user status in profiles table
+          let userProfile = matchedProfileFromDb && matchedProfileFromDb.id === user.id ? matchedProfileFromDb : null;
+          try {
+            if (!userProfile) {
+              const { data: profile } = await dbClient
+                .from("profiles")
+                .select("*")
+                .eq("id", user.id)
+                .maybeSingle();
+              userProfile = profile;
+            }
+
+            if (userProfile) {
+              if (userProfile.status === "disabled") {
+                return res.status(403).json({
+                  error: "Tài khoản của bạn đã bị vô hiệu hóa bởi quản trị viên. Vui lòng liên hệ hỗ trợ."
+                });
+              }
+            } else {
+              // Automatically bootstrap profile record if not present
+              const defaultName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Quản trị viên";
+              const defaultRole = user.user_metadata?.role || "admin";
+              const { data: newProfile } = await dbClient
+                .from("profiles")
+                .upsert({
+                  id: user.id,
+                  email: user.email,
+                  full_name: defaultName,
+                  role: defaultRole,
+                  status: "active"
+                })
+                .select()
+                .single();
+              userProfile = newProfile;
+            }
+          } catch (profileErr) {
+            console.warn("Lỗi kiểm tra bảng profiles:", profileErr);
+          }
+
+          const fullName = userProfile?.full_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Quản trị viên";
+          const phone = userProfile?.phone || user.user_metadata?.phone || "";
+          const role = userProfile?.role || "admin";
+          const status = userProfile?.status || "active";
+
+          const token = jwt.sign(
+            {
+              id: user.id,
+              email: user.email,
+              full_name: fullName,
+              phone: phone,
+              role,
+              status
+            },
+            SESSION_SECRET,
+            { expiresIn: "7d" }
+          );
+
+          res.cookie("admin_token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+          });
+
+          return res.json({
+            success: true,
+            token: token,
+            message: "Đăng nhập thành công qua Supabase Auth",
+            user: {
+              id: user.id,
+              email: user.email,
+              full_name: fullName,
+              phone: phone,
+              role,
+              status
+            }
+          });
+        }
       }
     }
 
     // 2. Fallback check for emergency master password if configured
     if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
-      const fallbackUser = {
-        id: "master-admin",
-        email: trimmedEmail || "admin@system.local",
-        full_name: "Quản Trị Viên Hệ Thống",
-        role: "admin",
-        status: "active"
-      };
+      if (matchedProfileFromDb && matchedProfileFromDb.status === "disabled") {
+        return res.status(403).json({
+          error: "Tài khoản của bạn đã bị vô hiệu hóa bởi quản trị viên. Vui lòng liên hệ hỗ trợ."
+        });
+      }
+
+      const fallbackUser = matchedProfileFromDb
+        ? {
+            id: matchedProfileFromDb.id,
+            email: matchedProfileFromDb.email || trimmedEmail || "admin@system.local",
+            full_name: matchedProfileFromDb.full_name || "Quản Trị Viên Hệ Thống",
+            phone: matchedProfileFromDb.phone || "",
+            role: matchedProfileFromDb.role || "admin",
+            status: matchedProfileFromDb.status || "active"
+          }
+        : {
+            id: "master-admin",
+            email: trimmedEmail || "admin@system.local",
+            full_name: "Quản Trị Viên Hệ Thống",
+            role: "admin",
+            status: "active"
+          };
 
       const token = jwt.sign(fallbackUser, SESSION_SECRET, { expiresIn: "7d" });
 
