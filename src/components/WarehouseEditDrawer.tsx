@@ -26,6 +26,9 @@ import {
   ProcessingStatusType,
   DISTRICT_OPTIONS,
   AuthUser,
+  LoaiViTriType,
+  AiExtractedFieldKey,
+  NguonTrichXuatMap,
 } from "../types";
 import {
   NormalizedWarehouseProperty,
@@ -33,6 +36,11 @@ import {
   PROCESSING_STATUS_META,
   toVNguonXuatRow,
   isStandardMaTk,
+  LOAI_VI_TRI_OPTIONS,
+  HUONG_OPTIONS,
+  PHAP_LY_PRESETS,
+  sanitizeTenDuong,
+  sanitizeSoNha,
 } from "../utils/dataWarehouseUtils";
 import {
   parseAreaNumbers,
@@ -51,6 +59,7 @@ interface WarehouseEditDrawerProps {
     item: NormalizedWarehouseProperty,
     target: "hometea" | "post_writer"
   ) => Promise<void>;
+  onRunAiSingle?: (item: NormalizedWarehouseProperty) => Promise<void>;
   currentUser?: AuthUser | null;
 }
 
@@ -61,6 +70,7 @@ export default function WarehouseEditDrawer({
   onSave,
   onDelete,
   onExportSingle,
+  onRunAiSingle,
   currentUser,
 }: WarehouseEditDrawerProps) {
   const [maTk, setMaTk] = useState("");
@@ -76,6 +86,21 @@ export default function WarehouseEditDrawer({
   const [giaVnd, setGiaVnd] = useState<number | null>(null);
   const [loaiHinh, setLoaiHinh] = useState("Nhà phố");
   const [toaDo, setToaDo] = useState("");
+
+  // Các trường Bóc tách bằng AI (NULL nếu không có trong văn bản)
+  const [loaiViTri, setLoaiViTri] = useState<LoaiViTriType | "">("");
+  const [huong, setHuong] = useState<string>("");
+  const [phapLy, setPhapLy] = useState<string>("");
+  const [soPhongNgu, setSoPhongNgu] = useState<string>("");
+  const [soWc, setSoWc] = useState<string>("");
+  const [duongVaoM, setDuongVaoM] = useState<string>("");
+  const [dacDiemInput, setDacDiemInput] = useState<string>("");
+  const [hienTrang, setHienTrang] = useState<string>("");
+  const [nguonTrichXuat, setNguonTrichXuat] = useState<NguonTrichXuatMap>({});
+  const [aiManualFields, setAiManualFields] = useState<AiExtractedFieldKey[]>([]);
+  const [daBocTachAi, setDaBocTachAi] = useState(false);
+  const [daXacNhanAi, setDaXacNhanAi] = useState(false);
+  const [isRunningAiSingle, setIsRunningAiSingle] = useState(false);
 
   const [trangThaiKinhDoanh, setTrangThaiKinhDoanh] =
     useState<BusinessStatusType>("nguon_tho");
@@ -106,7 +131,7 @@ export default function WarehouseEditDrawer({
     if (!item) return;
     setMaTk(item.ma_tk || "");
     setSoNha(item.so_nha || "");
-    setDuong(item.duong || "");
+    setDuong(item.ten_duong || item.duong || "");
     setPhuong(item.phuong || "");
     setDienTichSo(
       item.dien_tich_so !== null && item.dien_tich_so !== undefined
@@ -129,6 +154,32 @@ export default function WarehouseEditDrawer({
     );
     setLoaiHinh(item.loai_hinh || "Nhà phố");
     setToaDo(item.toa_do || "");
+    setLoaiViTri(item.loai_vi_tri || "");
+    setHuong(item.huong || "");
+    setPhapLy(item.phap_ly || "");
+    setSoPhongNgu(
+      item.so_phong_ngu !== null && item.so_phong_ngu !== undefined
+        ? String(item.so_phong_ngu)
+        : ""
+    );
+    setSoWc(
+      item.so_wc !== null && item.so_wc !== undefined ? String(item.so_wc) : ""
+    );
+    setDuongVaoM(
+      item.duong_vao_m !== null && item.duong_vao_m !== undefined
+        ? String(item.duong_vao_m)
+        : ""
+    );
+    setDacDiemInput(
+      Array.isArray(item.dac_diem) && item.dac_diem.length > 0
+        ? item.dac_diem.join(", ")
+        : ""
+    );
+    setHienTrang(item.hien_trang || "");
+    setNguonTrichXuat(item.nguon_trich_xuat || {});
+    setAiManualFields(item.ai_manual_fields || []);
+    setDaBocTachAi(item.da_boc_tach_ai);
+    setDaXacNhanAi(item.da_xac_nhan_ai);
     setTrangThaiKinhDoanh(item.trang_thai_kinh_doanh);
     setTrangThaiXuLy(item.trang_thai_xu_ly);
     setDaXuatHometea(item.da_xuat_hometea);
@@ -143,6 +194,47 @@ export default function WarehouseEditDrawer({
   }, [item]);
 
   if (!isOpen || !item) return null;
+
+  const markAiFieldManual = (key: AiExtractedFieldKey, newVal: any) => {
+    setAiManualFields((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    setNguonTrichXuat((prev) => ({
+      ...prev,
+      [key]: {
+        gia_tri: newVal,
+        bang_chung: prev[key]?.bang_chung || "Đã chỉnh sửa / xác nhận thủ công",
+        tin_cay: "cao",
+        da_sua_tay: true,
+        da_xac_nhan: true,
+      },
+    }));
+  };
+
+  const confirmSingleAiField = (key: AiExtractedFieldKey, currentVal: any) => {
+    setNguonTrichXuat((prev) => ({
+      ...prev,
+      [key]: {
+        gia_tri: currentVal,
+        bang_chung: prev[key]?.bang_chung || "Đã xác nhận thủ công",
+        tin_cay: "cao",
+        da_sua_tay: prev[key]?.da_sua_tay || false,
+        da_xac_nhan: true,
+      },
+    }));
+  };
+
+  const doesAiFieldNeedConfirm = (key: AiExtractedFieldKey, currentVal: any): boolean => {
+    if (daXacNhanAi) return false;
+    if (aiManualFields.includes(key)) return false;
+    const ev = nguonTrichXuat[key];
+    if (ev?.da_sua_tay || ev?.da_xac_nhan) return false;
+    const isEmpty =
+      currentVal === null ||
+      currentVal === undefined ||
+      currentVal === "" ||
+      (Array.isArray(currentVal) && currentVal.length === 0);
+    if (isEmpty || !ev || ev.tin_cay === "thap") return true;
+    return false;
+  };
 
   const handlePriceInputChange = (val: string) => {
     setGiaInput(val);
@@ -216,7 +308,10 @@ export default function WarehouseEditDrawer({
         : "border-slate-700/80 bg-slate-900/90 text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
     }`;
 
-  const handleSaveChanges = async (e?: React.FormEvent) => {
+  const handleSaveChanges = async (
+    e?: React.FormEvent,
+    overrideConfirmReady = false
+  ) => {
     if (e) e.preventDefault();
     if (isViewer) return;
     setIsSaving(true);
@@ -225,6 +320,9 @@ export default function WarehouseEditDrawer({
 
     try {
       const cleanMaTk = maTk.trim().toUpperCase();
+      const cleanSoNha = sanitizeSoNha(soNha) || soNha.trim();
+      const cleanTenDuong = sanitizeTenDuong(duong) || duong.trim();
+
       const combinedDienTich =
         numDtSo !== null && numDtThucTe !== null
           ? numDtSo === numDtThucTe
@@ -238,7 +336,7 @@ export default function WarehouseEditDrawer({
 
       const displayTitle = [
         cleanMaTk ? `${cleanMaTk}_` : "",
-        [soNha.trim(), duong.trim()].filter(Boolean).join(" "),
+        [cleanSoNha, cleanTenDuong].filter(Boolean).join(" "),
         combinedDienTich,
         soTang.trim(),
         rong.trim(),
@@ -255,13 +353,42 @@ export default function WarehouseEditDrawer({
         is_hidden: false,
       }));
 
+      const parsedPn =
+        soPhongNgu.trim() !== "" &&
+        !isNaN(Number(soPhongNgu)) &&
+        Number(soPhongNgu) > 0
+          ? Math.round(Number(soPhongNgu))
+          : null;
+      const parsedWc =
+        soWc.trim() !== "" && !isNaN(Number(soWc)) && Number(soWc) > 0
+          ? Math.round(Number(soWc))
+          : null;
+      const parsedDuongVao =
+        duongVaoM.trim() !== "" &&
+        !isNaN(Number(duongVaoM)) &&
+        Number(duongVaoM) > 0
+          ? Number(duongVaoM)
+          : null;
+      const parsedDacDiem = dacDiemInput.trim()
+        ? dacDiemInput
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null;
+
+      const finalConfirmed = overrideConfirmReady ? true : daXacNhanAi;
+      const finalXuLy: ProcessingStatusType = overrideConfirmReady
+        ? "san_sang"
+        : trangThaiXuLy;
+
       const updates: Partial<Property> = {
         name: displayTitle || item.raw.name,
         phone: sdtNguon.trim(),
         district: phuong.trim(),
         ma_tk: cleanMaTk,
-        so_nha: soNha.trim(),
-        duong: duong.trim(),
+        so_nha: cleanSoNha || null,
+        ten_duong: cleanTenDuong || null,
+        duong: cleanTenDuong,
         phuong: phuong.trim(),
         dien_tich: combinedDienTich,
         dien_tich_so: numDtSo,
@@ -272,14 +399,26 @@ export default function WarehouseEditDrawer({
         gia: giaVnd,
         loai_hinh: loaiHinh.trim(),
         toa_do: toaDo.trim(),
+        loai_vi_tri: loaiViTri ? (loaiViTri as LoaiViTriType) : null,
+        huong: huong.trim() ? huong.trim() : null,
+        phap_ly: phapLy.trim() ? phapLy.trim() : null,
+        so_phong_ngu: parsedPn,
+        so_wc: parsedWc,
+        duong_vao_m: parsedDuongVao,
+        dac_diem: parsedDacDiem,
+        hien_trang: hienTrang.trim() ? hienTrang.trim() : null,
+        nguon_trich_xuat: nguonTrichXuat,
+        ai_manual_fields: aiManualFields,
+        da_boc_tach_ai: daBocTachAi || Object.keys(nguonTrichXuat).length > 0,
+        da_xac_nhan_ai: finalConfirmed,
         website_link: toaDo.trim().startsWith("http")
           ? toaDo.trim()
           : item.raw.website_link,
         trang_thai_kinh_doanh: trangThaiKinhDoanh,
-        trang_thai_xu_ly: trangThaiXuLy,
+        trang_thai_xu_ly: finalXuLy,
         da_xuat_hometea:
-          daXuatHometea || trangThaiXuLy === "da_len_hometea",
-        da_xuat_fb: daXuatFb || trangThaiXuLy === "da_dang_fb",
+          daXuatHometea || finalXuLy === "da_len_hometea",
+        da_xuat_fb: daXuatFb || finalXuLy === "da_dang_fb",
         moi_gioi_nguon: moiGioiNguon.trim(),
         sdt_nguon: sdtNguon.trim(),
         hoa_hong: hoaHong.trim(),
@@ -288,8 +427,17 @@ export default function WarehouseEditDrawer({
         anh: anhPayload,
       };
 
+      if (overrideConfirmReady) {
+        setDaXacNhanAi(true);
+        setTrangThaiXuLy("san_sang");
+      }
+
       await onSave(item.id, updates);
-      setSaveMessage("Đã lưu chuẩn hóa bản ghi thành công!");
+      setSaveMessage(
+        overrideConfirmReady
+          ? "Đã xác nhận bóc tách AI & chuyển sang Sẵn sàng!"
+          : "Đã lưu chuẩn hóa bản ghi thành công!"
+      );
       setTimeout(() => setSaveMessage(null), 2800);
     } catch (err: any) {
       setSaveError(err.message || "Lỗi khi lưu bản ghi.");
@@ -325,7 +473,8 @@ export default function WarehouseEditDrawer({
     ma_tk: maTk.trim().toUpperCase() || item.suggestedMaTk,
     isLegacyOrMissingMaTk: !isStandardMaTk(maTk),
     so_nha: soNha.trim(),
-    duong: duong.trim(),
+    ten_duong: sanitizeTenDuong(duong) || duong.trim(),
+    duong: sanitizeTenDuong(duong) || duong.trim(),
     phuong: phuong.trim(),
     dien_tich_so: numDtSo,
     dien_tich_thuc_te: numDtThucTe,
@@ -333,6 +482,28 @@ export default function WarehouseEditDrawer({
     rong: rong.trim(),
     dai: dai.trim(),
     gia: giaVnd,
+    loai_vi_tri: loaiViTri ? (loaiViTri as LoaiViTriType) : null,
+    huong: huong.trim() || null,
+    phap_ly: phapLy.trim() || null,
+    so_phong_ngu:
+      soPhongNgu.trim() && !isNaN(Number(soPhongNgu)) && Number(soPhongNgu) > 0
+        ? Math.round(Number(soPhongNgu))
+        : null,
+    so_wc:
+      soWc.trim() && !isNaN(Number(soWc)) && Number(soWc) > 0
+        ? Math.round(Number(soWc))
+        : null,
+    duong_vao_m:
+      duongVaoM.trim() && !isNaN(Number(duongVaoM)) && Number(duongVaoM) > 0
+        ? Number(duongVaoM)
+        : null,
+    dac_diem: dacDiemInput.trim()
+      ? dacDiemInput
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null,
+    hien_trang: hienTrang.trim() || null,
     anhArray: imageUrls.map((url, idx) => ({
       url,
       is_avatar: idx === 0,
@@ -340,6 +511,65 @@ export default function WarehouseEditDrawer({
     })),
     trang_thai_xu_ly: trangThaiXuLy,
   });
+
+  const renderAiFieldStatusBadge = (key: AiExtractedFieldKey, currentVal: any) => {
+    const ev = nguonTrichXuat[key];
+    const isManual = aiManualFields.includes(key) || ev?.da_sua_tay;
+    if (isManual) {
+      return (
+        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-semibold">
+          Đã sửa tay (Giữ nguyên khi chạy lại AI)
+        </span>
+      );
+    }
+    if (daXacNhanAi || ev?.da_xac_nhan) {
+      return (
+        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
+          Đã xác nhận
+        </span>
+      );
+    }
+    const needsConfirm = doesAiFieldNeedConfirm(key, currentVal);
+    if (needsConfirm) {
+      return (
+        <div className="flex items-center gap-1">
+          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+            Cần xác nhận
+          </span>
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={() => confirmSingleAiField(key, currentVal)}
+              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700 text-[10px] font-semibold cursor-pointer"
+              title="Duyệt giá trị này (kể cả NULL)"
+            >
+              Duyệt
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
+        Tin cậy cao
+      </span>
+    );
+  };
+
+  const renderEvidenceBox = (key: AiExtractedFieldKey) => {
+    const ev = nguonTrichXuat[key];
+    if (!ev && !daBocTachAi) return null;
+    return (
+      <div className="mt-1 px-2.5 py-1.5 rounded-md bg-slate-950/90 border border-slate-800/90 text-[11px] text-slate-400 flex items-start gap-1.5">
+        <span className="text-violet-400 font-semibold shrink-0">Bằng chứng:</span>
+        <span className="italic text-slate-300 break-words">
+          {ev?.bang_chung
+            ? `"${ev.bang_chung}"`
+            : "Không có thông tin trong văn bản gốc (NULL)"}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -424,10 +654,10 @@ export default function WarehouseEditDrawer({
               trangThaiXuLy !== "da_dang_fb" && (
                 <button
                   type="button"
-                  onClick={() => setTrangThaiXuLy("san_sang")}
-                  className="px-2 py-0.5 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] cursor-pointer"
+                  onClick={() => handleSaveChanges(undefined, true)}
+                  className="px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] cursor-pointer"
                 >
-                  Chuyển sang Sẵn sàng
+                  Xác nhận & Chuyển Sẵn sàng
                 </button>
               )}
           </div>
@@ -500,9 +730,11 @@ export default function WarehouseEditDrawer({
                 </label>
                 <select
                   value={trangThaiXuLy}
-                  onChange={(e) =>
-                    setTrangThaiXuLy(e.target.value as ProcessingStatusType)
-                  }
+                  onChange={(e) => {
+                    const nextVal = e.target.value as ProcessingStatusType;
+                    setTrangThaiXuLy(nextVal);
+                    if (nextVal === "san_sang") setDaXacNhanAi(true);
+                  }}
                   disabled={isViewer}
                   className={fieldInputClass(false)}
                 >
@@ -565,40 +797,350 @@ export default function WarehouseEditDrawer({
             </div>
           </section>
 
+          {/* GROUP 1.5: KẾT QUẢ BÓC TÁCH BẰNG AI & BẰNG CHỨNG VĂN BẢN (nguon_trich_xuat) */}
+          <section className="p-4 rounded-xl bg-violet-950/20 border border-violet-500/35 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-violet-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                  Bóc tách bằng AI & Bằng chứng gốc (`nguon_trich_xuat`)
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Chỉ lấy thông tin CÓ trong văn bản (không có để NULL). Sửa tay sẽ khóa trường đó để chạy lại AI không ghi đè.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {onRunAiSingle && !isViewer && (
+                  <button
+                    type="button"
+                    disabled={isRunningAiSingle}
+                    onClick={async () => {
+                      setIsRunningAiSingle(true);
+                      try {
+                        await onRunAiSingle(item);
+                      } finally {
+                        setIsRunningAiSingle(false);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {isRunningAiSingle
+                      ? "Đang bóc tách..."
+                      : daBocTachAi
+                      ? "Bóc tách lại bằng AI"
+                      : "Bóc tách bằng AI"}
+                  </button>
+                )}
+
+                {!isViewer && (
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleSaveChanges(undefined, true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Xác nhận duyệt &rarr; Sẵn sàng
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* 1. loai_vi_tri */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    1. Loại vị trí (`loai_vi_tri`)
+                  </label>
+                  {renderAiFieldStatusBadge("loai_vi_tri", loaiViTri || null)}
+                </div>
+                <select
+                  value={loaiViTri}
+                  onChange={(e) => {
+                    const val = e.target.value as LoaiViTriType | "";
+                    setLoaiViTri(val);
+                    markAiFieldManual("loai_vi_tri", val || null);
+                  }}
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("loai_vi_tri", loaiViTri || null)
+                  )}
+                >
+                  <option value="">-- NULL (Chưa rõ / Không có trong bài) --</option>
+                  {LOAI_VI_TRI_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {renderEvidenceBox("loai_vi_tri")}
+              </div>
+
+              {/* 2. huong */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    2. Hướng (`huong`)
+                  </label>
+                  {renderAiFieldStatusBadge("huong", huong || null)}
+                </div>
+                <select
+                  value={huong}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setHuong(val);
+                    markAiFieldManual("huong", val || null);
+                  }}
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("huong", huong || null)
+                  )}
+                >
+                  <option value="">
+                    -- NULL (Xuất Hometea: &quot;Không xác định&quot;) --
+                  </option>
+                  {HUONG_OPTIONS.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+                {renderEvidenceBox("huong")}
+              </div>
+
+              {/* 3. phap_ly */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 sm:col-span-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    3. Pháp lý (`phap_ly`) — Chỉ ghi &quot;hoàn công&quot; khi bài có nói
+                  </label>
+                  {renderAiFieldStatusBadge("phap_ly", phapLy || null)}
+                </div>
+                <input
+                  type="text"
+                  list="phap-ly-preset-list"
+                  value={phapLy}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPhapLy(val);
+                    markAiFieldManual("phap_ly", val.trim() || null);
+                  }}
+                  placeholder="NULL nếu không có. VD: Sổ hồng riêng | Sổ hồng riêng, hoàn công | Sổ hồng riêng (đang vay)..."
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("phap_ly", phapLy || null)
+                  )}
+                />
+                <datalist id="phap-ly-preset-list">
+                  {PHAP_LY_PRESETS.map((p) => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
+                {renderEvidenceBox("phap_ly")}
+              </div>
+
+              {/* 4. so_phong_ngu & so_wc */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    4a. Số phòng ngủ (`so_phong_ngu`)
+                  </label>
+                  {renderAiFieldStatusBadge("so_phong_ngu", soPhongNgu || null)}
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={soPhongNgu}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSoPhongNgu(val);
+                    markAiFieldManual(
+                      "so_phong_ngu",
+                      val.trim() && Number(val) > 0 ? Math.round(Number(val)) : null
+                    );
+                  }}
+                  placeholder="NULL (Không điền 0)"
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("so_phong_ngu", soPhongNgu || null)
+                  )}
+                />
+                {renderEvidenceBox("so_phong_ngu")}
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    4b. Số WC (`so_wc`)
+                  </label>
+                  {renderAiFieldStatusBadge("so_wc", soWc || null)}
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={soWc}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSoWc(val);
+                    markAiFieldManual(
+                      "so_wc",
+                      val.trim() && Number(val) > 0 ? Math.round(Number(val)) : null
+                    );
+                  }}
+                  placeholder="NULL (Không điền 0)"
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("so_wc", soWc || null)
+                  )}
+                />
+                {renderEvidenceBox("so_wc")}
+              </div>
+
+              {/* 5. duong_vao_m */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    6a. Đường/hẻm vào (m) (`duong_vao_m`)
+                  </label>
+                  {renderAiFieldStatusBadge("duong_vao_m", duongVaoM || null)}
+                </div>
+                <input
+                  type="number"
+                  step="any"
+                  min={0.5}
+                  value={duongVaoM}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDuongVaoM(val);
+                    markAiFieldManual(
+                      "duong_vao_m",
+                      val.trim() && Number(val) > 0 ? Number(val) : null
+                    );
+                  }}
+                  placeholder="NULL (VD: 5, 4.5)"
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("duong_vao_m", duongVaoM || null)
+                  )}
+                />
+                {renderEvidenceBox("duong_vao_m")}
+              </div>
+
+              {/* 6. hien_trang */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    6b. Hiện trạng & Thuê (`hien_trang`)
+                  </label>
+                  {renderAiFieldStatusBadge("hien_trang", hienTrang || null)}
+                </div>
+                <input
+                  type="text"
+                  value={hienTrang}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setHienTrang(val);
+                    markAiFieldManual("hien_trang", val.trim() || null);
+                  }}
+                  placeholder="NULL (VD: Nhà mới ở ngay, đang cho thuê 10tr/th)"
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("hien_trang", hienTrang || null)
+                  )}
+                />
+                {renderEvidenceBox("hien_trang")}
+              </div>
+
+              {/* 7. dac_diem */}
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 sm:col-span-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-200">
+                    6c. Đặc điểm nổi bật (`dac_diem` — ngăn cách bởi dấu phẩy)
+                  </label>
+                  {renderAiFieldStatusBadge("dac_diem", dacDiemInput || null)}
+                </div>
+                <input
+                  type="text"
+                  value={dacDiemInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDacDiemInput(val);
+                    const arr = val
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    markAiFieldManual("dac_diem", arr.length > 0 ? arr : null);
+                  }}
+                  placeholder="NULL (VD: lô góc, view sông, thang máy, gần trường)"
+                  disabled={isViewer}
+                  className={fieldInputClass(
+                    doesAiFieldNeedConfirm("dac_diem", dacDiemInput || null)
+                  )}
+                />
+                {renderEvidenceBox("dac_diem")}
+              </div>
+            </div>
+          </section>
+
           {/* GROUP 2: ĐỊA CHỈ CHUẨN */}
           <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5" />
-              2. Địa chỉ chuẩn (Số nhà, Đường, Phường)
+              2. Địa chỉ chuẩn (Số nhà `so_nha`, Tên đường sạch `ten_duong`, Phường)
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Số nhà / Thửa <span className="text-rose-400">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-300">
+                    Số nhà (`so_nha`) <span className="text-rose-400">*</span>
+                  </label>
+                  {renderAiFieldStatusBadge("so_nha", soNha || null)}
+                </div>
                 <input
                   type="text"
                   value={soNha}
-                  onChange={(e) => setSoNha(e.target.value)}
-                  placeholder="VD: 220/36/14"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSoNha(val);
+                    markAiFieldManual("so_nha", val.trim() || null);
+                  }}
+                  placeholder="VD: 17/21 (Không điền Thửa/Tờ)"
                   disabled={isViewer}
-                  className={fieldInputClass(isSoNhaMissing)}
+                  className={fieldInputClass(
+                    isSoNhaMissing || doesAiFieldNeedConfirm("so_nha", soNha || null)
+                  )}
                 />
+                {renderEvidenceBox("so_nha")}
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Tên đường <span className="text-rose-400">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-300">
+                    Tên đường (`ten_duong`) <span className="text-rose-400">*</span>
+                  </label>
+                  {renderAiFieldStatusBadge("ten_duong", duong || null)}
+                </div>
                 <input
                   type="text"
                   value={duong}
-                  onChange={(e) => setDuong(e.target.value)}
-                  placeholder="VD: Cách Mạng Tháng 8"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDuong(val);
+                    markAiFieldManual("ten_duong", val.trim() || null);
+                  }}
+                  placeholder="Không có chữ 'Đường' dư (VD: Lò Lu)"
                   disabled={isViewer}
-                  className={fieldInputClass(isDuongMissing)}
+                  className={fieldInputClass(
+                    isDuongMissing || doesAiFieldNeedConfirm("ten_duong", duong || null)
+                  )}
                 />
+                {renderEvidenceBox("ten_duong")}
               </div>
 
               <div>

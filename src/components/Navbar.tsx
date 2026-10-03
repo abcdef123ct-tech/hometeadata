@@ -82,14 +82,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="font-extrabold text-xs sm:text-sm tracking-tight text-slate-100 leading-none truncate">
-                    NGUONNHA · KHO DỮ LIỆU CHUẨN
+                    Nguonnha · Kho dữ liệu
                   </h1>
                   <span className="hidden md:inline-flex px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono font-bold text-amber-400">
                     {totalCount} tin
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-medium block mt-0.5 truncate">
-                  Chuẩn hóa xuất Hometea &amp; Post Writer
+                  Quản lý kho dữ liệu chuẩn
                 </span>
               </div>
             </div>
@@ -105,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Database className="w-3.5 h-3.5" />
-                <span>Bảng Kho Chuẩn</span>
+                <span>Kho</span>
               </button>
 
               <button
@@ -140,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <History className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Nhật ký xuất &amp; VIEW</span>
+                <span>Nhật ký</span>
                 {exportLogsCount > 0 && (
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
@@ -154,33 +154,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </button>
 
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={() => onChangeTab("users")}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      activeTab === "users"
-                        ? "bg-amber-500 text-slate-950 shadow-xs"
-                        : "text-slate-400 hover:text-white hover:bg-slate-800/60"
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>Tài khoản</span>
-                  </button>
-
-                  <button
-                    onClick={() => onChangeTab("system")}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      activeTab === "system"
-                        ? "bg-amber-500 text-slate-950 shadow-xs"
-                        : "text-slate-400 hover:text-white hover:bg-slate-800/60"
-                    }`}
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Hệ thống</span>
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => onChangeTab("system")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "system"
+                    ? "bg-amber-500 text-slate-950 shadow-xs"
+                    : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Hệ thống</span>
+              </button>
             </nav>
           </div>
 

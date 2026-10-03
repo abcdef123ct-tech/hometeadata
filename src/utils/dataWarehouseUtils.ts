@@ -3,6 +3,9 @@ import {
   BusinessStatusType,
   ProcessingStatusType,
   VNguonXuatRow,
+  LoaiViTriType,
+  AiExtractedFieldKey,
+  NguonTrichXuatMap,
 } from "../types";
 import { parsePropertyData } from "./propertyParser";
 import {
@@ -12,6 +15,56 @@ import {
   formatVndToReadable,
   validateAreaCrossCheck,
 } from "./bulkFolderParser";
+
+export const LOAI_VI_TRI_OPTIONS: Array<{ value: LoaiViTriType; label: string }> = [
+  { value: "mat_tien", label: "Mặt tiền (mat_tien)" },
+  { value: "hem_xe_hoi", label: "Hẻm xe hơi (hem_xe_hoi)" },
+  { value: "hem_xe_may", label: "Hẻm xe máy (hem_xe_may)" },
+  { value: "hem", label: "Hẻm chưa rõ loại (hem)" },
+];
+
+export const LOAI_VI_TRI_LABELS: Record<LoaiViTriType, string> = {
+  mat_tien: "Mặt tiền",
+  hem_xe_hoi: "Hẻm xe hơi",
+  hem_xe_may: "Hẻm xe máy",
+  hem: "Hẻm",
+};
+
+export const HUONG_OPTIONS = [
+  "Đông",
+  "Tây",
+  "Nam",
+  "Bắc",
+  "Đông Nam",
+  "Đông Bắc",
+  "Tây Nam",
+  "Tây Bắc",
+] as const;
+
+export const PHAP_LY_PRESETS = [
+  "Sổ hồng riêng",
+  "Sổ hồng riêng, hoàn công",
+  "Sổ chung",
+  "Sổ đỏ",
+  "Giấy tờ tay (vi bằng)",
+] as const;
+
+export const AI_EXTRACTED_FIELDS_META: Array<{
+  key: AiExtractedFieldKey;
+  label: string;
+  shortLabel: string;
+}> = [
+  { key: "loai_vi_tri", label: "Loại vị trí (loai_vi_tri)", shortLabel: "Vị trí" },
+  { key: "huong", label: "Hướng (huong)", shortLabel: "Hướng" },
+  { key: "phap_ly", label: "Pháp lý (phap_ly)", shortLabel: "Pháp lý" },
+  { key: "so_phong_ngu", label: "Số phòng ngủ (so_phong_ngu)", shortLabel: "PN" },
+  { key: "so_wc", label: "Số WC (so_wc)", shortLabel: "WC" },
+  { key: "so_nha", label: "Số nhà (so_nha)", shortLabel: "Số nhà" },
+  { key: "ten_duong", label: "Tên đường (ten_duong)", shortLabel: "Tên đường" },
+  { key: "duong_vao_m", label: "Đường vào m (duong_vao_m)", shortLabel: "Đường vào (m)" },
+  { key: "dac_diem", label: "Đặc điểm (dac_diem)", shortLabel: "Đặc điểm" },
+  { key: "hien_trang", label: "Hiện trạng (hien_trang)", shortLabel: "Hiện trạng" },
+];
 
 export const MANDATORY_WAREHOUSE_FIELDS = [
   { key: "ma_tk", label: "Mã TK" },
@@ -104,6 +157,7 @@ export interface NormalizedWarehouseProperty {
   suggestedMaTk: string;
 
   so_nha: string;
+  ten_duong: string;
   duong: string;
   phuong: string;
   dien_tich: string;
@@ -118,6 +172,22 @@ export interface NormalizedWarehouseProperty {
   pricePerM2Text: string;
   loai_hinh: string;
   toa_do: string;
+
+  // Các trường Bóc tách bằng AI (NULL nếu không có trong văn bản)
+  loai_vi_tri: LoaiViTriType | null;
+  huong: string | null;
+  phap_ly: string | null;
+  so_phong_ngu: number | null;
+  so_wc: number | null;
+  duong_vao_m: number | null;
+  dac_diem: string[] | null;
+  hien_trang: string | null;
+  nguon_trich_xuat: NguonTrichXuatMap;
+  da_boc_tach_ai: boolean;
+  da_xac_nhan_ai: boolean;
+  ai_manual_fields: AiExtractedFieldKey[];
+  aiNeedsConfirmKeys: AiExtractedFieldKey[];
+  aiNeedsConfirmCount: number;
 
   // Ảnh
   imageUrls: string[];
@@ -152,6 +222,50 @@ export interface NormalizedWarehouseProperty {
   needsAreaReview: boolean;
   needsAreaLightCheck: boolean;
   areaReviewReason?: string;
+}
+
+/**
+ * Làm sạch tên đường theo quy tắc:
+ * - KHÔNG có chữ "Đường" dư ở đầu
+ * - KHÔNG chứa số nhà, thửa, tờ, ghi chú vị trí ("kế nhà 228...", "gần...", "cách...")
+ */
+export function sanitizeTenDuong(raw: string | undefined | null): string {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  if (!s) return "";
+
+  // Loại bỏ thông tin thửa đất, tờ bản đồ
+  s = s
+    .replace(/\bthửa(?:\s*đất)?(?:\s*số)?[\s.:_-]*[0-9A-Za-z/-]+[;,\s]*/gi, " ")
+    .replace(/\btờ(?:\s*bản\s*đồ)?(?:\s*số)?[\s.:_-]*[0-9A-Za-z/-]+[;,\s]*/gi, " ")
+    .replace(/(?:^|[;,\s]+)số\s+[0-9]{3,6}\s*[;,]\s*/gi, " ")
+    .replace(/\((?:lô|thửa|tờ|kế|cạnh|gần)[^)]*\)/gi, " ")
+    .replace(/\b(?:kế\s*nhà|cạnh\s*nhà|đối\s*diện\s*nhà|sát\s*nhà|gần\s*nhà)\s+[0-9A-Za-z./-]+\b/gi, " ")
+    .trim();
+
+  // Bỏ chữ "Đường" dư ở đầu (VD: "Đường Nguyễn Thị Chạy" -> "Nguyễn Thị Chạy", "Đường số 4" -> "Số 4")
+  s = s.replace(/^đường\s+/i, "").trim();
+  if (/^số\s+[0-9A-Za-z]+$/i.test(s)) {
+    s = s.replace(/^số\s+/i, "Số ");
+  }
+
+  s = s.replace(/^[\s.,;/-]+|[\s.,;/-]+$/g, "").replace(/\s{2,}/g, " ").trim();
+  return s;
+}
+
+/**
+ * Làm sạch số nhà:
+ * - Không chứa Thửa, Tờ, hoặc ghi chú "kế nhà 228..."
+ */
+export function sanitizeSoNha(raw: string | undefined | null): string {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  if (!s) return "";
+  if (/\b(thửa|tờ|kế\s*nhà|cạnh\s*nhà|đối\s*diện)\b/i.test(s)) {
+    return "";
+  }
+  s = s.replace(/^(?:số\s*nhà|số|hẻm|ngõ|kiệt)\s+/i, "").replace(/\./g, "/").trim();
+  return s;
 }
 
 /**
@@ -239,9 +353,13 @@ export function normalizePropertyRecord(
   const { legacyToken, suggestedMaTk } = generateStandardMaTk(prop, indexFallback);
   const effectiveMaTk = isLegacyOrMissingMaTk ? (extractedMaTk || legacyToken || "") : extractedMaTk;
 
-  // 2. Địa chỉ: so_nha, duong, dia_chi, phuong
-  let so_nha = String(prop.so_nha || "").trim();
-  let duong = String(prop.duong || "").trim();
+  // 2. Địa chỉ: so_nha, ten_duong (duong), dia_chi, phuong
+  const hasAiAddressExtraction =
+    Boolean(prop.da_boc_tach_ai) ||
+    Boolean(prop.nguon_trich_xuat && ("so_nha" in prop.nguon_trich_xuat || "ten_duong" in prop.nguon_trich_xuat));
+
+  let so_nha = sanitizeSoNha(prop.so_nha);
+  let duong = sanitizeTenDuong(prop.ten_duong || prop.duong || "");
   const rawDiaChi = String(prop.dia_chi || "").trim();
   let phuong = String(prop.phuong || prop.district || "").trim();
 
@@ -256,75 +374,80 @@ export function normalizePropertyRecord(
     const s = addrStr.trim();
     if (!s) return { so_nha: "", duong: "" };
 
-    // Case A: Land plot "Thửa xxx, Tờ yyy [(Lô ...)] <Street>"
+    // Case A: Land plot "Thửa xxx, Tờ yyy [(Lô ...)] <Street>" -> so_nha = "", duong = clean street
     if (/\b(thửa|tờ)\b/i.test(s)) {
-      let working = s;
-      const plotParts: string[] = [];
-      const thuaMatch = working.match(/\bthửa(?:\s*số)?[\s.:_-]*([0-9A-Za-z/-]+)/i);
-      if (thuaMatch) {
-        plotParts.push(`Thửa ${thuaMatch[1].replace(/\./g, "/")}`);
-        working = working.replace(thuaMatch[0], " ").trim();
-      }
-      const toMatch = working.match(/\btờ(?:\s*bản\s*đồ)?(?:\s*số)?[\s.:_-]*([0-9A-Za-z/-]+)/i);
-      if (toMatch) {
-        plotParts.push(`Tờ ${toMatch[1].replace(/\./g, "/")}`);
-        working = working.replace(toMatch[0], " ").trim();
-      }
-      working = working.replace(/^[\s.,/-]+|[\s.,/-]+$/g, "").replace(/\s{2,}/g, " ").trim();
-      if (plotParts.length > 0) {
-        return {
-          so_nha: plotParts.join(", "),
-          duong: working || s,
-        };
-      }
-    }
-
-    // Case B: "Hẻm 230 Lò Lu", "Kế nhà 228 Lò Lu", "Số 32 Đường 4"
-    const prefixMatch = s.match(
-      /^(hẻm|ngõ|kiệt|số|kế\s*nhà|cạnh\s*nhà|đối\s*diện|lô)\s+([0-9A-Za-z./-]+)\s+(.+)$/i
-    );
-    if (prefixMatch) {
+      const cleanedStreet = sanitizeTenDuong(s);
       return {
-        so_nha: `${prefixMatch[1]} ${prefixMatch[2]}`.replace(/\./g, "/").trim(),
-        duong: prefixMatch[3].trim(),
+        so_nha: "",
+        duong: cleanedStreet,
       };
     }
 
-    // Case C: House number at start e.g. "17/21 Long Thuận" or "36F2VP2 đường 18"
+    // Case B: "Kế nhà 228 Lò Lu", "Cạnh nhà ...", "Đối diện ..." -> location note, NOT house number
+    const locNoteMatch = s.match(
+      /^(kế\s*nhà|cạnh\s*nhà|đối\s*diện(?:\s*nhà)?|sát\s*nhà|gần\s*nhà)\s+([0-9A-Za-z./-]+)\s+(.+)$/i
+    );
+    if (locNoteMatch) {
+      return {
+        so_nha: "",
+        duong: sanitizeTenDuong(locNoteMatch[3]),
+      };
+    }
+
+    // Case C: "Hẻm 230 Lò Lu", "Số 32 Đường 4"
+    const prefixMatch = s.match(
+      /^(hẻm|ngõ|kiệt|số|lô)\s+([0-9A-Za-z./-]+)\s+(.+)$/i
+    );
+    if (prefixMatch) {
+      return {
+        so_nha: prefixMatch[2].replace(/\./g, "/").trim(),
+        duong: sanitizeTenDuong(prefixMatch[3]),
+      };
+    }
+
+    // Case D: House number at start e.g. "17/21 Long Thuận" or "96.24 Nguyễn Thị Chạy"
     const numMatch = s.match(/^([0-9]+[A-Za-z0-9./-]*)\s+(.+)$/);
     if (numMatch && !/^(đường|phố|kdc|quốc\s*lộ|tỉnh\s*lộ)\b/i.test(s)) {
       return {
         so_nha: numMatch[1].replace(/\./g, "/").trim(),
-        duong: numMatch[2].trim(),
+        duong: sanitizeTenDuong(numMatch[2]),
       };
     }
 
-    return { so_nha: "", duong: s };
+    return { so_nha: "", duong: sanitizeTenDuong(s) };
   };
 
-  if (!so_nha && !duong && cleanDiaChi) {
+  if (!hasAiAddressExtraction) {
+    if (!so_nha && !duong && cleanDiaChi) {
+      const split = splitDiaChiIntoParts(cleanDiaChi);
+      so_nha = split.so_nha;
+      duong = split.duong;
+    }
+
+    // Fallback to folderParsed or parsedLegacy if so_nha or duong is still empty
+    if ((!so_nha || !duong) && folderParsed && (folderParsed.so_nha || folderParsed.duong)) {
+      if (!so_nha && folderParsed.so_nha) so_nha = sanitizeSoNha(folderParsed.so_nha);
+      if (!duong && folderParsed.duong) duong = sanitizeTenDuong(folderParsed.duong);
+    }
+
+    if (!so_nha && !duong && parsedLegacy.cleanAddress) {
+      const split = splitDiaChiIntoParts(parsedLegacy.cleanAddress);
+      so_nha = split.so_nha;
+      duong = split.duong;
+    }
+  } else if (!duong && cleanDiaChi) {
     const split = splitDiaChiIntoParts(cleanDiaChi);
-    so_nha = split.so_nha;
-    duong = split.duong;
-  }
-
-  // Fallback to folderParsed or parsedLegacy if so_nha or duong is still empty
-  if ((!so_nha || !duong) && folderParsed && (folderParsed.so_nha || folderParsed.duong)) {
-    if (!so_nha && folderParsed.so_nha) so_nha = folderParsed.so_nha;
-    if (!duong && folderParsed.duong) duong = folderParsed.duong;
-  }
-
-  if (!so_nha && !duong && parsedLegacy.cleanAddress) {
-    const split = splitDiaChiIntoParts(parsedLegacy.cleanAddress);
-    so_nha = split.so_nha;
     duong = split.duong;
   }
 
   // Strip trailing ", <phuong>" from duong if present
   if (duong && phuong) {
     const escapedPhuong = phuong.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    duong = duong.replace(new RegExp(`\\s*,\\s*${escapedPhuong}\\s*$`, "i"), "").trim();
+    duong = sanitizeTenDuong(
+      duong.replace(new RegExp(`\\s*,\\s*${escapedPhuong}\\s*$`, "i"), "").trim()
+    );
   }
+  const ten_duong = duong;
 
   // 3. Diện tích: dien_tich_so & dien_tich_thuc_te
   let dien_tich_so: number | null =
@@ -488,6 +611,132 @@ export function normalizePropertyRecord(
 
   const toa_do = (prop.toa_do || parsedLegacy.googleMapsUrl || prop.website_link || "").trim();
 
+  // 7.5. Các trường Bóc tách bằng AI (Chỉ lấy từ dữ liệu đã bóc tách / sửa tay, không tự đoán)
+  const nguon_trich_xuat: NguonTrichXuatMap =
+    prop.nguon_trich_xuat && typeof prop.nguon_trich_xuat === "object"
+      ? { ...prop.nguon_trich_xuat }
+      : {};
+
+  const da_boc_tach_ai = Boolean(
+    prop.da_boc_tach_ai || Object.keys(nguon_trich_xuat).length > 0
+  );
+  const da_xac_nhan_ai = Boolean(prop.da_xac_nhan_ai);
+  const ai_manual_fields: AiExtractedFieldKey[] = Array.isArray(prop.ai_manual_fields)
+    ? prop.ai_manual_fields
+    : [];
+
+  const validLoaiViTri: LoaiViTriType[] = [
+    "mat_tien",
+    "hem_xe_hoi",
+    "hem_xe_may",
+    "hem",
+  ];
+  const rawLoaiViTri =
+    prop.loai_vi_tri ?? nguon_trich_xuat.loai_vi_tri?.gia_tri ?? null;
+  const loai_vi_tri: LoaiViTriType | null =
+    rawLoaiViTri && validLoaiViTri.includes(rawLoaiViTri as LoaiViTriType)
+      ? (rawLoaiViTri as LoaiViTriType)
+      : null;
+
+  const rawHuong = prop.huong ?? nguon_trich_xuat.huong?.gia_tri ?? null;
+  const huong: string | null =
+    rawHuong && String(rawHuong).trim() ? String(rawHuong).trim() : null;
+
+  const rawPhapLy = prop.phap_ly ?? nguon_trich_xuat.phap_ly?.gia_tri ?? null;
+  const phap_ly: string | null =
+    rawPhapLy && String(rawPhapLy).trim() ? String(rawPhapLy).trim() : null;
+
+  const rawPn =
+    prop.so_phong_ngu !== undefined
+      ? prop.so_phong_ngu
+      : nguon_trich_xuat.so_phong_ngu?.gia_tri;
+  const so_phong_ngu: number | null =
+    rawPn !== null &&
+    rawPn !== undefined &&
+    String(rawPn).trim() !== "" &&
+    !isNaN(Number(rawPn)) &&
+    Number(rawPn) > 0
+      ? Math.round(Number(rawPn))
+      : null;
+
+  const rawWc =
+    prop.so_wc !== undefined
+      ? prop.so_wc
+      : nguon_trich_xuat.so_wc?.gia_tri;
+  const so_wc: number | null =
+    rawWc !== null &&
+    rawWc !== undefined &&
+    String(rawWc).trim() !== "" &&
+    !isNaN(Number(rawWc)) &&
+    Number(rawWc) > 0
+      ? Math.round(Number(rawWc))
+      : null;
+
+  const rawDuongVao =
+    prop.duong_vao_m !== undefined
+      ? prop.duong_vao_m
+      : nguon_trich_xuat.duong_vao_m?.gia_tri;
+  const duong_vao_m: number | null =
+    rawDuongVao !== null &&
+    rawDuongVao !== undefined &&
+    String(rawDuongVao).trim() !== "" &&
+    !isNaN(Number(rawDuongVao)) &&
+    Number(rawDuongVao) > 0
+      ? Number(rawDuongVao)
+      : null;
+
+  const rawDacDiem =
+    prop.dac_diem !== undefined
+      ? prop.dac_diem
+      : nguon_trich_xuat.dac_diem?.gia_tri;
+  const dac_diem: string[] | null =
+    Array.isArray(rawDacDiem) && rawDacDiem.filter(Boolean).length > 0
+      ? rawDacDiem.map((d) => String(d).trim()).filter(Boolean)
+      : null;
+
+  const rawHienTrang =
+    prop.hien_trang !== undefined
+      ? prop.hien_trang
+      : nguon_trich_xuat.hien_trang?.gia_tri;
+  const hien_trang: string | null =
+    rawHienTrang && String(rawHienTrang).trim()
+      ? String(rawHienTrang).trim()
+      : null;
+
+  // Xác định các trường AI có giá trị NULL hoặc tin_cay === 'thap' (chưa được xác nhận/sửa tay)
+  const aiFieldValuesMap: Record<AiExtractedFieldKey, any> = {
+    loai_vi_tri,
+    huong,
+    phap_ly,
+    so_phong_ngu,
+    so_wc,
+    so_nha: so_nha || null,
+    ten_duong: ten_duong || null,
+    duong_vao_m,
+    dac_diem,
+    hien_trang,
+  };
+
+  const aiNeedsConfirmKeys: AiExtractedFieldKey[] = [];
+  if (da_boc_tach_ai && !da_xac_nhan_ai) {
+    for (const meta of AI_EXTRACTED_FIELDS_META) {
+      const k = meta.key;
+      const ev = nguon_trich_xuat[k];
+      if (ev?.da_sua_tay || ev?.da_xac_nhan || ai_manual_fields.includes(k)) {
+        continue;
+      }
+      const val = aiFieldValuesMap[k];
+      const isNullOrEmpty =
+        val === null ||
+        val === undefined ||
+        val === "" ||
+        (Array.isArray(val) && val.length === 0);
+      if (isNullOrEmpty || !ev || ev.tin_cay === "thap") {
+        aiNeedsConfirmKeys.push(k);
+      }
+    }
+  }
+
   // 8. Tính toán 11 trường bắt buộc chuẩn & cột `thieu`
   const missingFieldKeys: MandatoryFieldKey[] = [];
   const missingFieldLabels: string[] = [];
@@ -546,8 +795,11 @@ export function normalizePropertyRecord(
     trang_thai_xu_ly = prop.trang_thai_xu_ly;
     if (trang_thai_xu_ly === "da_len_hometea") da_xuat_hometea = true;
     if (trang_thai_xu_ly === "da_dang_fb") da_xuat_fb = true;
+    // Quy tắc bắt buộc: Tin đã bóc tách AI nhưng chưa được người dùng xác nhận thì chưa chuyển sang 'san_sang'
+    if (da_boc_tach_ai && !da_xac_nhan_ai && trang_thai_xu_ly === "san_sang") {
+      trang_thai_xu_ly = "can_bo_sung";
+    }
   } else {
-    // Proposed automatic mapping from legacy status & completeness
     const hasCoreThree =
       (!!duong || !!so_nha) &&
       gia !== null &&
@@ -559,12 +811,9 @@ export function normalizePropertyRecord(
       trang_thai_xu_ly = "da_dang_fb";
     } else if (da_xuat_hometea) {
       trang_thai_xu_ly = "da_len_hometea";
-    } else if (
-      prop.trang_thai_nguon === "sẵn sàng đăng" ||
-      (missingFieldKeys.length === 0 && prop.trang_thai_nguon !== "thô")
-    ) {
+    } else if (da_xac_nhan_ai) {
       trang_thai_xu_ly = "san_sang";
-    } else if (hasCoreThree || prop.trang_thai_nguon === "đã bổ sung") {
+    } else if (hasCoreThree || prop.trang_thai_nguon === "đã bổ sung" || da_boc_tach_ai) {
       trang_thai_xu_ly = "can_bo_sung";
     } else {
       trang_thai_xu_ly = "tho";
@@ -595,6 +844,7 @@ export function normalizePropertyRecord(
     legacyToken,
     suggestedMaTk,
     so_nha,
+    ten_duong,
     duong,
     phuong,
     dien_tich,
@@ -609,6 +859,20 @@ export function normalizePropertyRecord(
     pricePerM2Text,
     loai_hinh,
     toa_do,
+    loai_vi_tri,
+    huong,
+    phap_ly,
+    so_phong_ngu,
+    so_wc,
+    duong_vao_m,
+    dac_diem,
+    hien_trang,
+    nguon_trich_xuat,
+    da_boc_tach_ai,
+    da_xac_nhan_ai,
+    ai_manual_fields,
+    aiNeedsConfirmKeys,
+    aiNeedsConfirmCount: aiNeedsConfirmKeys.length,
     imageUrls,
     anhArray,
     imageCount: imageUrls.length,
@@ -635,14 +899,16 @@ export function normalizePropertyRecord(
 }
 
 /**
- * Chuyển đổi sang dòng chuẩn của VIEW `v_nguon_xuat`
- * Đủ mọi dòng, KHÔNG lọc ngầm, đúng 13 cột chuẩn, KHÔNG chứa sdt_nguon, moi_gioi_nguon, mo_ta_tho
+ * Chuyển đổi sang dòng chuẩn của VIEW `v_nguon_xuat` / Xuất Hometea
+ * Đủ mọi dòng, KHÔNG lọc ngầm, KHÔNG chứa sdt_nguon, moi_gioi_nguon, mo_ta_tho
+ * Hướng nếu NULL thì xuất sang Hometea thành "Không xác định"
  */
 export function toVNguonXuatRow(norm: NormalizedWarehouseProperty): VNguonXuatRow {
   return {
     ma_tk: norm.isLegacyOrMissingMaTk ? norm.suggestedMaTk : norm.ma_tk,
-    so_nha: norm.so_nha,
-    duong: norm.duong,
+    so_nha: norm.so_nha || null,
+    ten_duong: norm.ten_duong || norm.duong || null,
+    duong: norm.ten_duong || norm.duong,
     phuong: norm.phuong,
     dien_tich_so: norm.dien_tich_so,
     dien_tich_thuc_te: norm.dien_tich_thuc_te,
@@ -650,6 +916,14 @@ export function toVNguonXuatRow(norm: NormalizedWarehouseProperty): VNguonXuatRo
     rong: norm.rong,
     dai: norm.dai,
     gia: norm.gia,
+    loai_vi_tri: norm.loai_vi_tri,
+    huong: norm.huong || "Không xác định",
+    phap_ly: norm.phap_ly,
+    so_phong_ngu: norm.so_phong_ngu,
+    so_wc: norm.so_wc,
+    duong_vao_m: norm.duong_vao_m,
+    dac_diem: norm.dac_diem,
+    hien_trang: norm.hien_trang,
     anh: norm.anhArray,
     trang_thai_xu_ly: norm.trang_thai_xu_ly,
     thieu: norm.thieuString,

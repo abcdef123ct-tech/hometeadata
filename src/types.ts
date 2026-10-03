@@ -11,6 +11,44 @@ export type ProcessingStatusType =
   | "da_len_hometea"
   | "da_dang_fb";
 
+export type LoaiViTriType = "mat_tien" | "hem_xe_hoi" | "hem_xe_may" | "hem";
+
+export type HuongType =
+  | "Đông"
+  | "Tây"
+  | "Nam"
+  | "Bắc"
+  | "Đông Nam"
+  | "Đông Bắc"
+  | "Tây Nam"
+  | "Tây Bắc";
+
+export type AiConfidenceType = "cao" | "thap";
+
+export type AiExtractedFieldKey =
+  | "loai_vi_tri"
+  | "huong"
+  | "phap_ly"
+  | "so_phong_ngu"
+  | "so_wc"
+  | "so_nha"
+  | "ten_duong"
+  | "duong_vao_m"
+  | "dac_diem"
+  | "hien_trang";
+
+export interface AiFieldEvidence<T = any> {
+  gia_tri: T | null;
+  bang_chung: string;
+  tin_cay: AiConfidenceType;
+  da_sua_tay?: boolean;
+  da_xac_nhan?: boolean;
+}
+
+export type NguonTrichXuatMap = Partial<
+  Record<AiExtractedFieldKey, AiFieldEvidence<any>>
+>;
+
 export type UserRole = "admin" | "staff" | "viewer";
 export type UserStatus = "active" | "disabled";
 
@@ -108,8 +146,9 @@ export interface Property {
 
   // Các trường chuẩn của Kho Dữ Liệu Chuẩn
   ma_tk?: string;
-  so_nha?: string;
-  duong?: string;
+  so_nha?: string | null;
+  ten_duong?: string | null;
+  duong?: string | null;
   dia_chi?: string;
   phuong?: string;
   dien_tich?: string;
@@ -122,6 +161,21 @@ export interface Property {
   loai_hinh?: string;
   trang_thai_nguon?: SourceStatusType;
   ngay_lay?: string | null;
+
+  // Các trường Bóc tách bằng AI (Chỉ lấy từ văn bản, không có thì NULL)
+  loai_vi_tri?: LoaiViTriType | null;
+  huong?: HuongType | string | null;
+  phap_ly?: string | null;
+  so_phong_ngu?: number | null;
+  so_wc?: number | null;
+  duong_vao_m?: number | null;
+  dac_diem?: string[] | null;
+  hien_trang?: string | null;
+  nguon_trich_xuat?: NguonTrichXuatMap | null;
+  da_boc_tach_ai?: boolean;
+  da_xac_nhan_ai?: boolean;
+  ngay_boc_tach_ai?: string | null;
+  ai_manual_fields?: AiExtractedFieldKey[];
 
   // Các trường Nội bộ (KHÔNG xuất sang v_nguon_xuat / Hometea)
   mo_ta_tho?: string;
@@ -157,7 +211,8 @@ export interface Property {
  */
 export interface VNguonXuatRow {
   ma_tk: string;
-  so_nha: string;
+  so_nha: string | null;
+  ten_duong?: string | null;
   duong: string;
   phuong: string;
   dien_tich_so: number | null;
@@ -166,6 +221,14 @@ export interface VNguonXuatRow {
   rong: string;
   dai: string;
   gia: number | null;
+  loai_vi_tri?: LoaiViTriType | null;
+  huong?: string;
+  phap_ly?: string | null;
+  so_phong_ngu?: number | null;
+  so_wc?: number | null;
+  duong_vao_m?: number | null;
+  dac_diem?: string[] | null;
+  hien_trang?: string | null;
   anh: any[];
   trang_thai_xu_ly: ProcessingStatusType;
   thieu: string;

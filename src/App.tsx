@@ -31,6 +31,8 @@ import {
   BusinessStatusType,
   ProcessingStatusType,
   ExportLogEntry,
+  LoaiViTriType,
+  AiExtractedFieldKey,
 } from "./types";
 import {
   normalizePropertyRecord,
@@ -38,6 +40,13 @@ import {
   BUSINESS_STATUS_META,
   PROCESSING_STATUS_META,
   toVNguonXuatRow,
+  LOAI_VI_TRI_LABELS,
+  LOAI_VI_TRI_OPTIONS,
+  HUONG_OPTIONS,
+  PHAP_LY_PRESETS,
+  AI_EXTRACTED_FIELDS_META,
+  sanitizeTenDuong,
+  sanitizeSoNha,
 } from "./utils/dataWarehouseUtils";
 import { safeFetchJson } from "./utils/apiClient";
 import ConfigGuide from "./components/ConfigGuide";
@@ -92,12 +101,63 @@ export default function App() {
   const [filterCompleteness, setFilterCompleteness] = useState<
     "all" | "complete" | "incomplete"
   >("all");
+  const [filterAiState, setFilterAiState] = useState<
+    "all" | "needs_confirm" | "extracted" | "unextracted"
+  >("all");
 
   // Selection for Bulk Actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWardValue, setBulkWardValue] = useState<string>("");
   const [bulkActionLoading, setBulkActionLoading] = useState<boolean>(false);
   const [toastBanner, setToastBanner] = useState<string | null>(null);
+
+  // AI Batch Extraction Progress State (20 items per batch, retry on error)
+  const [aiBatchProgress, setAiBatchProgress] = useState<{
+    isRunning: boolean;
+    currentBatch: number;
+    totalBatches: number;
+    processedCount: number;
+    totalCount: number;
+    successCount: number;
+    failedIds: string[];
+    lastError: string | null;
+  }>({
+    isRunning: false,
+    currentBatch: 0,
+    totalBatches: 0,
+    processedCount: 0,
+    totalCount: 0,
+    successCount: 0,
+    failedIds: [],
+    lastError: null,
+  });
+
+  // Inline Quick Edit / Confirm state inside the dense table
+  const [inlineAiRowId, setInlineAiRowId] = useState<string | null>(null);
+  const [inlineAiDraft, setInlineAiDraft] = useState<{
+    loai_vi_tri: LoaiViTriType | "";
+    huong: string;
+    phap_ly: string;
+    so_phong_ngu: string;
+    so_wc: string;
+    so_nha: string;
+    ten_duong: string;
+    duong_vao_m: string;
+    dac_diem: string;
+    hien_trang: string;
+  }>({
+    loai_vi_tri: "",
+    huong: "",
+    phap_ly: "",
+    so_phong_ngu: "",
+    so_wc: "",
+    so_nha: "",
+    ten_duong: "",
+    duong_vao_m: "",
+    dac_diem: "",
+    hien_trang: "",
+  });
+  const [inlineAiSaving, setInlineAiSaving] = useState<boolean>(false);
 
   // Right Edit Drawer & Modals
   const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
@@ -390,6 +450,15 @@ export default function App() {
       ) {
         return false;
       }
+      if (filterAiState === "needs_confirm") {
+        if (!item.da_boc_tach_ai || (item.da_xac_nhan_ai && item.aiNeedsConfirmCount === 0)) {
+          return false;
+        }
+      } else if (filterAiState === "extracted") {
+        if (!item.da_boc_tach_ai) return false;
+      } else if (filterAiState === "unextracted") {
+        if (item.da_boc_tach_ai) return false;
+      }
 
       const q = searchQuery.trim().toLowerCase();
       if (!q) return true;
@@ -399,10 +468,15 @@ export default function App() {
         item.suggestedMaTk,
         item.legacyToken,
         item.so_nha,
+        item.ten_duong,
         item.duong,
         item.phuong,
         item.gia_text,
         item.dien_tich,
+        item.phap_ly,
+        item.huong,
+        item.hien_trang,
+        ...(item.dac_diem || []),
         item.moi_gioi_nguon,
         item.sdt_nguon,
         item.raw.name,
@@ -419,6 +493,7 @@ export default function App() {
     filterProcessingStatus,
     filterDistrict,
     filterCompleteness,
+    filterAiState,
     searchQuery,
   ]);
 
@@ -557,6 +632,341 @@ export default function App() {
     }
   };
 
+  // =========================================================================
+  // BÓC TÁCH BẰNG AI THEO LÔ 20 TIN (Có tiến độ, tự thử lại khi lỗi, không ghi đè sửa tay)
+  // =========================================================================
+  const handleRunAiBatchExtraction = async (
+    targetItems: NormalizedWarehouseProperty[]
+  ) => {
+    if (targetItems.length === 0 || aiBatchProgress.isRunning) return;
+
+    const BATCH_SIZE = 20;
+    const totalCount = targetItems.length;
+    const batches: NormalizedWarehouseProperty[][] = [];
+    for (let i = 0; i < targetItems.length; i += BATCH_SIZE) {
+      batches.push(targetItems.slice(i, i + BATCH_SIZE));
+    }
+
+    setAiBatchProgress({
+      isRunning: true,
+      currentBatch: 1,
+      totalBatches: batches.length,
+      processedCount: 0,
+      totalCount,
+      successCount: 0,
+      failedIds: [],
+      lastError: null,
+    });
+
+    let cumulativeProcessed = 0;
+    let cumulativeSuccess = 0;
+    const cumulativeFailedIds: string[] = [];
+    let latestErr: string | null = null;
+
+    for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+      const batch = batches[bIdx];
+      setAiBatchProgress((prev) => ({
+        ...prev,
+        currentBatch: bIdx + 1,
+      }));
+
+      // Thử lại tối đa 3 lần cho các tin lỗi trong lô 20 tin
+      let pendingItems = [...batch];
+      let batchExtractedMap = new Map<string, Record<string, any>>();
+
+      for (let retry = 0; retry < 3 && pendingItems.length > 0; retry++) {
+        try {
+          const payloadRecords = pendingItems.map((it) => ({
+            id: it.id,
+            content: it.raw.content,
+            name: it.raw.name,
+            dia_chi: it.raw.dia_chi || [it.so_nha, it.duong].filter(Boolean).join(" "),
+            phuong: it.phuong,
+            so_nha: it.so_nha || null,
+            ten_duong: it.ten_duong || it.duong || null,
+            duong: it.duong || null,
+            ai_manual_fields: it.ai_manual_fields,
+          }));
+
+          const res = await safeFetchJson<{
+            success?: boolean;
+            results?: Array<{
+              id: string;
+              success: boolean;
+              error?: string;
+              extracted?: Record<string, any>;
+            }>;
+            error?: string;
+          }>("/api/properties/ai-extract", {
+            method: "POST",
+            headers: getAuthHeaders(true),
+            credentials: "include",
+            body: JSON.stringify({ records: payloadRecords }),
+          });
+
+          if (!res.ok || !Array.isArray(res.data?.results)) {
+            latestErr =
+              res.errorMessage ||
+              res.data?.error ||
+              `Lỗi lô ${bIdx + 1} (HTTP ${res.status})`;
+            if (retry < 2) {
+              await new Promise((r) => setTimeout(r, 800 * (retry + 1)));
+              continue;
+            }
+            break;
+          }
+
+          const stillFailed: NormalizedWarehouseProperty[] = [];
+          for (const itemResult of res.data.results) {
+            if (itemResult.success && itemResult.extracted) {
+              batchExtractedMap.set(itemResult.id, itemResult.extracted);
+            } else {
+              if (itemResult.error) latestErr = itemResult.error;
+              const found = pendingItems.find((p) => p.id === itemResult.id);
+              if (found) stillFailed.push(found);
+            }
+          }
+
+          pendingItems = stillFailed;
+          if (pendingItems.length > 0 && retry < 2) {
+            await new Promise((r) => setTimeout(r, 800 * (retry + 1)));
+          }
+        } catch (err: any) {
+          latestErr = err?.message || "Lỗi kết nối khi bóc tách bằng AI";
+          if (retry < 2) {
+            await new Promise((r) => setTimeout(r, 800 * (retry + 1)));
+          }
+        }
+      }
+
+      // Cập nhật ngay lập tức state properties cho các tin thành công trong lô này
+      if (batchExtractedMap.size > 0) {
+        setProperties((prev) =>
+          prev.map((p) => {
+            const ext = p.id ? batchExtractedMap.get(p.id) : undefined;
+            if (!ext) return p;
+            return {
+              ...p,
+              ...ext,
+            };
+          })
+        );
+      }
+
+      for (const failedItem of pendingItems) {
+        cumulativeFailedIds.push(failedItem.id);
+      }
+
+      cumulativeProcessed += batch.length;
+      cumulativeSuccess += batchExtractedMap.size;
+
+      setAiBatchProgress({
+        isRunning: bIdx < batches.length - 1,
+        currentBatch: bIdx + 1,
+        totalBatches: batches.length,
+        processedCount: cumulativeProcessed,
+        totalCount,
+        successCount: cumulativeSuccess,
+        failedIds: [...cumulativeFailedIds],
+        lastError: cumulativeFailedIds.length > 0 ? latestErr : null,
+      });
+    }
+
+    if (cumulativeFailedIds.length === 0) {
+      showToast(
+        `Đã bóc tách AI thành công ${cumulativeSuccess}/${totalCount} tin! Vui lòng kiểm tra và bấm "Xác nhận" để chuyển sang Sẵn sàng.`
+      );
+    } else {
+      showToast(
+        `Đã bóc tách ${cumulativeSuccess}/${totalCount} tin (${cumulativeFailedIds.length} tin lỗi — có thể bấm Thử lại).`
+      );
+    }
+  };
+
+  // Xác nhận kết quả AI & chuyển sang `trang_thai_xu_ly = 'san_sang'`
+  const handleConfirmAiReady = async (
+    targetItems: NormalizedWarehouseProperty[]
+  ) => {
+    if (targetItems.length === 0) return;
+
+    const batch = targetItems.map((it) => {
+      const nextEvidence = { ...(it.nguon_trich_xuat || {}) };
+      for (const meta of AI_EXTRACTED_FIELDS_META) {
+        const k = meta.key;
+        if (nextEvidence[k]) {
+          nextEvidence[k] = {
+            ...nextEvidence[k]!,
+            da_xac_nhan: true,
+          };
+        }
+      }
+      return {
+        id: it.id,
+        changes: {
+          da_xac_nhan_ai: true,
+          da_boc_tach_ai: true,
+          nguon_trich_xuat: nextEvidence,
+          trang_thai_xu_ly: "san_sang" as ProcessingStatusType,
+          ma_tk: it.isLegacyOrMissingMaTk ? it.suggestedMaTk : it.ma_tk,
+          _fromAiExtraction: true,
+        },
+      };
+    });
+
+    await executeBatchUpdate(batch);
+    showToast(
+      `Đã xác nhận duyệt ${batch.length} tin & chuyển sang trạng thái "Sẵn sàng" (\`san_sang\`)!`
+    );
+  };
+
+  // Mở khung Sửa / Duyệt nhanh ngay trong dòng bảng
+  const openInlineAiEditor = (
+    it: NormalizedWarehouseProperty,
+    e?: React.MouseEvent
+  ) => {
+    if (e) e.stopPropagation();
+    if (inlineAiRowId === it.id) {
+      setInlineAiRowId(null);
+      return;
+    }
+    setInlineAiRowId(it.id);
+    setInlineAiDraft({
+      loai_vi_tri: it.loai_vi_tri || "",
+      huong: it.huong || "",
+      phap_ly: it.phap_ly || "",
+      so_phong_ngu:
+        it.so_phong_ngu !== null && it.so_phong_ngu !== undefined
+          ? String(it.so_phong_ngu)
+          : "",
+      so_wc:
+        it.so_wc !== null && it.so_wc !== undefined ? String(it.so_wc) : "",
+      so_nha: it.so_nha || "",
+      ten_duong: it.ten_duong || it.duong || "",
+      duong_vao_m:
+        it.duong_vao_m !== null && it.duong_vao_m !== undefined
+          ? String(it.duong_vao_m)
+          : "",
+      dac_diem: Array.isArray(it.dac_diem) ? it.dac_diem.join(", ") : "",
+      hien_trang: it.hien_trang || "",
+    });
+  };
+
+  // Lưu sửa tay / xác nhận trực tiếp từ khung inline trong bảng
+  const handleSaveInlineAiEdit = async (
+    it: NormalizedWarehouseProperty,
+    confirmReady: boolean
+  ) => {
+    setInlineAiSaving(true);
+    try {
+      const cleanSoNha = sanitizeSoNha(inlineAiDraft.so_nha) || inlineAiDraft.so_nha.trim() || null;
+      const cleanTenDuong =
+        sanitizeTenDuong(inlineAiDraft.ten_duong) || inlineAiDraft.ten_duong.trim() || null;
+      const parsedPn =
+        inlineAiDraft.so_phong_ngu.trim() &&
+        !isNaN(Number(inlineAiDraft.so_phong_ngu)) &&
+        Number(inlineAiDraft.so_phong_ngu) > 0
+          ? Math.round(Number(inlineAiDraft.so_phong_ngu))
+          : null;
+      const parsedWc =
+        inlineAiDraft.so_wc.trim() &&
+        !isNaN(Number(inlineAiDraft.so_wc)) &&
+        Number(inlineAiDraft.so_wc) > 0
+          ? Math.round(Number(inlineAiDraft.so_wc))
+          : null;
+      const parsedDuongVao =
+        inlineAiDraft.duong_vao_m.trim() &&
+        !isNaN(Number(inlineAiDraft.duong_vao_m)) &&
+        Number(inlineAiDraft.duong_vao_m) > 0
+          ? Number(inlineAiDraft.duong_vao_m)
+          : null;
+      const parsedDacDiem = inlineAiDraft.dac_diem.trim()
+        ? inlineAiDraft.dac_diem
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null;
+
+      const nextVals: Record<AiExtractedFieldKey, any> = {
+        loai_vi_tri: inlineAiDraft.loai_vi_tri
+          ? (inlineAiDraft.loai_vi_tri as LoaiViTriType)
+          : null,
+        huong: inlineAiDraft.huong.trim() || null,
+        phap_ly: inlineAiDraft.phap_ly.trim() || null,
+        so_phong_ngu: parsedPn,
+        so_wc: parsedWc,
+        so_nha: cleanSoNha,
+        ten_duong: cleanTenDuong,
+        duong_vao_m: parsedDuongVao,
+        dac_diem: parsedDacDiem,
+        hien_trang: inlineAiDraft.hien_trang.trim() || null,
+      };
+
+      const prevVals: Record<AiExtractedFieldKey, any> = {
+        loai_vi_tri: it.loai_vi_tri,
+        huong: it.huong,
+        phap_ly: it.phap_ly,
+        so_phong_ngu: it.so_phong_ngu,
+        so_wc: it.so_wc,
+        so_nha: it.so_nha || null,
+        ten_duong: it.ten_duong || it.duong || null,
+        duong_vao_m: it.duong_vao_m,
+        dac_diem: it.dac_diem,
+        hien_trang: it.hien_trang,
+      };
+
+      const manualSet = new Set<AiExtractedFieldKey>(it.ai_manual_fields || []);
+      const nextEvMap = { ...(it.nguon_trich_xuat || {}) };
+
+      for (const meta of AI_EXTRACTED_FIELDS_META) {
+        const k = meta.key;
+        const changed =
+          JSON.stringify(prevVals[k] ?? null) !== JSON.stringify(nextVals[k] ?? null);
+        if (changed) {
+          manualSet.add(k);
+          nextEvMap[k] = {
+            gia_tri: nextVals[k],
+            bang_chung: nextEvMap[k]?.bang_chung || "Đã chỉnh sửa / xác nhận thủ công",
+            tin_cay: "cao",
+            da_sua_tay: true,
+            da_xac_nhan: true,
+          };
+        } else if (confirmReady && nextEvMap[k]) {
+          nextEvMap[k] = {
+            ...nextEvMap[k]!,
+            da_xac_nhan: true,
+          };
+        }
+      }
+
+      const updates: Partial<Property> = {
+        loai_vi_tri: nextVals.loai_vi_tri,
+        huong: nextVals.huong,
+        phap_ly: nextVals.phap_ly,
+        so_phong_ngu: nextVals.so_phong_ngu,
+        so_wc: nextVals.so_wc,
+        so_nha: nextVals.so_nha,
+        ten_duong: nextVals.ten_duong,
+        duong: nextVals.ten_duong || "",
+        duong_vao_m: nextVals.duong_vao_m,
+        dac_diem: nextVals.dac_diem,
+        hien_trang: nextVals.hien_trang,
+        nguon_trich_xuat: nextEvMap,
+        ai_manual_fields: Array.from(manualSet),
+        da_boc_tach_ai: true,
+        da_xac_nhan_ai: confirmReady ? true : it.da_xac_nhan_ai,
+        trang_thai_xu_ly: confirmReady ? "san_sang" : it.trang_thai_xu_ly,
+      };
+
+      await handleSaveDrawerUpdates(it.id, updates);
+      setInlineAiRowId(null);
+      if (confirmReady) {
+        showToast(`Đã xác nhận & chuyển tin ${it.ma_tk} sang Sẵn sàng!`);
+      }
+    } finally {
+      setInlineAiSaving(false);
+    }
+  };
+
   // Thao tác hàng loạt 1: Đánh dấu Sẵn sàng (hoặc trạng thái xử lý bất kỳ)
   const handleBulkSetProcessingStatus = async (
     newStatus: ProcessingStatusType
@@ -568,6 +978,7 @@ export default function App() {
       id: it.id,
       changes: {
         trang_thai_xu_ly: newStatus,
+        da_xac_nhan_ai: newStatus === "san_sang" ? true : it.da_xac_nhan_ai,
         ma_tk: it.isLegacyOrMissingMaTk ? it.suggestedMaTk : it.ma_tk,
       },
     }));
@@ -953,6 +1364,7 @@ export default function App() {
             properties={properties}
             currentUser={currentUser}
             onBackToProperties={() => setActiveTab("properties")}
+            onOpenMigrationModal={() => setIsMigrationModalOpen(true)}
           />
         ) : activeTab === "profile" ? (
           <UserProfileView
@@ -1179,6 +1591,7 @@ export default function App() {
                   filterBusinessStatus !== "all" ||
                   filterDistrict !== "all" ||
                   filterCompleteness !== "all" ||
+                  filterAiState !== "all" ||
                   searchQuery) && (
                   <button
                     type="button"
@@ -1187,6 +1600,7 @@ export default function App() {
                       setFilterBusinessStatus("all");
                       setFilterDistrict("all");
                       setFilterCompleteness("all");
+                      setFilterAiState("all");
                       setSearchQuery("");
                     }}
                     className="text-[11px] text-amber-400 hover:underline font-semibold cursor-pointer"
@@ -1308,6 +1722,26 @@ export default function App() {
                   <option value="incomplete">Còn thiếu trường bắt buộc</option>
                 </select>
 
+                {/* AI Extraction Filter */}
+                <select
+                  value={filterAiState}
+                  onChange={(e) =>
+                    setFilterAiState(
+                      e.target.value as
+                        | "all"
+                        | "needs_confirm"
+                        | "extracted"
+                        | "unextracted"
+                    )
+                  }
+                  className="px-3 py-2 rounded-xl bg-violet-950/60 border border-violet-500/40 text-xs text-violet-200 font-semibold outline-none cursor-pointer"
+                >
+                  <option value="all">Mọi trạng thái AI</option>
+                  <option value="unextracted">Chưa bóc tách AI</option>
+                  <option value="extracted">Đã bóc tách AI</option>
+                  <option value="needs_confirm">Cần xác nhận (NULL / Tin cậy thấp)</option>
+                </select>
+
                 {/* Refresh Button */}
                 <button
                   type="button"
@@ -1352,164 +1786,320 @@ export default function App() {
               </div>
             </div>
 
-            {/* 5. THANH THAO TÁC HÀNG LOẠT (BULK ACTIONS BAR) */}
+            {/* 5. THANH THAO TÁC HÀNG LOẠT (BULK ACTIONS BAR) & NÚT BÓC TÁCH BẰNG AI */}
             {!isViewer && (
-              <div className="p-3 rounded-2xl bg-slate-900/95 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={toggleSelectAllFiltered}
-                    className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {filteredItems.length > 0 &&
-                    filteredItems.every((it) => selectedIds.has(it.id)) ? (
-                      <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
-                    ) : (
-                      <Square className="w-3.5 h-3.5 text-slate-400" />
-                    )}
-                    <span>
-                      {selectedIds.size > 0
-                        ? `Đã chọn ${selectedIds.size} dòng`
-                        : "Chọn tất cả"}
-                    </span>
-                  </button>
-
-                  {selectedIds.size > 0 && (
+              <div className="p-3 rounded-2xl bg-slate-900/95 border border-slate-800 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setSelectedIds(new Set())}
-                      className="text-[11px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                      onClick={toggleSelectAllFiltered}
+                      className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer"
                     >
-                      Bỏ chọn
+                      {filteredItems.length > 0 &&
+                      filteredItems.every((it) => selectedIds.has(it.id)) ? (
+                        <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                      <span>
+                        {selectedIds.size > 0
+                          ? `Đã chọn ${selectedIds.size} dòng`
+                          : "Chọn tất cả"}
+                      </span>
                     </button>
-                  )}
 
-                  <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+                    {selectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedIds(new Set())}
+                        className="text-[11px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                      >
+                        Bỏ chọn
+                      </button>
+                    )}
 
-                  {/* Đánh dấu Sẵn sàng */}
-                  <button
-                    type="button"
-                    disabled={selectedIds.size === 0 || bulkActionLoading}
-                    onClick={() => handleBulkSetProcessingStatus("san_sang")}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-40 text-emerald-300 border border-emerald-500/35 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Đánh dấu Sẵn sàng
-                  </button>
+                    <div className="h-4 w-px bg-slate-800 hidden sm:block" />
 
-                  {/* Chuyển trạng thái kinh doanh nhanh */}
-                  <select
-                    disabled={selectedIds.size === 0 || bulkActionLoading}
-                    defaultValue=""
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) return;
-                      if (val.startsWith("kd:")) {
-                        handleBulkSetBusinessStatus(
-                          val.replace("kd:", "") as BusinessStatusType
-                        );
-                      } else if (val.startsWith("xl:")) {
-                        handleBulkSetProcessingStatus(
-                          val.replace("xl:", "") as ProcessingStatusType
-                        );
-                      }
-                      e.target.value = "";
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 disabled:opacity-40 text-xs text-slate-200 font-semibold outline-none cursor-pointer"
-                  >
-                    <option value="">Đổi trạng thái hàng loạt...</option>
-                    <optgroup label="Trạng thái xử lý (trang_thai_xu_ly)">
-                      <option value="xl:tho">→ tho (Thô)</option>
-                      <option value="xl:can_bo_sung">→ can_bo_sung (Cần bổ sung)</option>
-                      <option value="xl:san_sang">→ san_sang (Sẵn sàng)</option>
-                      <option value="xl:da_len_hometea">→ da_len_hometea</option>
-                      <option value="xl:da_dang_fb">→ da_dang_fb</option>
-                    </optgroup>
-                    <optgroup label="Trạng thái kinh doanh (trang_thai_kinh_doanh)">
-                      <option value="kd:nguon_tho">→ nguon_tho (Nguồn thô)</option>
-                      <option value="kd:da_ky">→ da_ky (Đã ký)</option>
-                      <option value="kd:da_ban">→ da_ban (Đã bán)</option>
-                    </optgroup>
-                  </select>
+                    {/* NÚT BÓC TÁCH BẰNG AI (CHỌN NHIỀU DÒNG HOẶC TẤT CẢ) */}
+                    {selectedIds.size > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={aiBatchProgress.isRunning || bulkActionLoading}
+                          onClick={() =>
+                            handleRunAiBatchExtraction(
+                              normalizedProperties.filter((it) =>
+                                selectedIds.has(it.id)
+                              )
+                            )
+                          }
+                          className="px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-400 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="Đọc cột content bằng AI theo lô 20 tin; không ghi đè các trường đã sửa tay"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>
+                            Bóc tách bằng AI ({selectedIds.size} dòng chọn)
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            aiBatchProgress.isRunning ||
+                            bulkActionLoading ||
+                            filteredItems.length === 0
+                          }
+                          onClick={() =>
+                            handleRunAiBatchExtraction(filteredItems)
+                          }
+                          className="px-2.5 py-1.5 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 disabled:opacity-40 text-violet-300 border border-violet-500/35 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                          title="Bóc tách bằng AI cho toàn bộ danh sách đang lọc"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Tất cả ({filteredItems.length})</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={
+                          aiBatchProgress.isRunning ||
+                          bulkActionLoading ||
+                          filteredItems.length === 0
+                        }
+                        onClick={() =>
+                          handleRunAiBatchExtraction(filteredItems)
+                        }
+                        className="px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-400 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        title="Đọc cột content bằng AI cho tất cả tin đang hiển thị (theo lô 20 tin, không ghi đè trường đã sửa tay)"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>
+                          Bóc tách bằng AI (Tất cả {filteredItems.length} dòng)
+                        </span>
+                      </button>
+                    )}
 
-                  {/* Gán phường hàng loạt */}
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="text"
-                      list="bulk-ward-datalist"
-                      value={bulkWardValue}
-                      onChange={(e) => setBulkWardValue(e.target.value)}
-                      placeholder="Nhập/chọn Phường..."
-                      disabled={selectedIds.size === 0 || bulkActionLoading}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 disabled:opacity-40 text-xs text-slate-100 placeholder-slate-500 w-36 outline-none focus:border-amber-500"
-                    />
-                    <datalist id="bulk-ward-datalist">
-                      {DISTRICT_OPTIONS.map((d) => (
-                        <option key={d} value={d} />
-                      ))}
-                    </datalist>
+                    {/* Xác nhận AI & Chuyển Sẵn sàng */}
                     <button
                       type="button"
-                      disabled={
-                        selectedIds.size === 0 ||
-                        !bulkWardValue.trim() ||
-                        bulkActionLoading
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={() =>
+                        handleConfirmAiReady(
+                          normalizedProperties.filter((it) =>
+                            selectedIds.has(it.id)
+                          )
+                        )
                       }
-                      onClick={handleBulkAssignWard}
-                      className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 text-amber-300 border border-amber-500/35 text-xs font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-40 text-emerald-300 border border-emerald-500/35 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      title="Xác nhận duyệt các trường AI và chuyển trang_thai_xu_ly = 'san_sang'"
                     >
-                      Gán phường
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Xác nhận duyệt → Sẵn sàng
+                    </button>
+
+                    {/* Chuyển trạng thái kinh doanh nhanh */}
+                    <select
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      defaultValue=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        if (val.startsWith("kd:")) {
+                          handleBulkSetBusinessStatus(
+                            val.replace("kd:", "") as BusinessStatusType
+                          );
+                        } else if (val.startsWith("xl:")) {
+                          handleBulkSetProcessingStatus(
+                            val.replace("xl:", "") as ProcessingStatusType
+                          );
+                        }
+                        e.target.value = "";
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 disabled:opacity-40 text-xs text-slate-200 font-semibold outline-none cursor-pointer"
+                    >
+                      <option value="">Đổi trạng thái hàng loạt...</option>
+                      <optgroup label="Trạng thái xử lý (trang_thai_xu_ly)">
+                        <option value="xl:tho">→ tho (Thô)</option>
+                        <option value="xl:can_bo_sung">→ can_bo_sung (Cần bổ sung)</option>
+                        <option value="xl:san_sang">→ san_sang (Sẵn sàng)</option>
+                        <option value="xl:da_len_hometea">→ da_len_hometea</option>
+                        <option value="xl:da_dang_fb">→ da_dang_fb</option>
+                      </optgroup>
+                      <optgroup label="Trạng thái kinh doanh (trang_thai_kinh_doanh)">
+                        <option value="kd:nguon_tho">→ nguon_tho (Nguồn thô)</option>
+                        <option value="kd:da_ky">→ da_ky (Đã ký)</option>
+                        <option value="kd:da_ban">→ da_ban (Đã bán)</option>
+                      </optgroup>
+                    </select>
+
+                    {/* Gán phường hàng loạt */}
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        list="bulk-ward-datalist"
+                        value={bulkWardValue}
+                        onChange={(e) => setBulkWardValue(e.target.value)}
+                        placeholder="Nhập/chọn Phường..."
+                        disabled={selectedIds.size === 0 || bulkActionLoading}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 disabled:opacity-40 text-xs text-slate-100 placeholder-slate-500 w-36 outline-none focus:border-amber-500"
+                      />
+                      <datalist id="bulk-ward-datalist">
+                        {DISTRICT_OPTIONS.map((d) => (
+                          <option key={d} value={d} />
+                        ))}
+                      </datalist>
+                      <button
+                        type="button"
+                        disabled={
+                          selectedIds.size === 0 ||
+                          !bulkWardValue.trim() ||
+                          bulkActionLoading
+                        }
+                        onClick={handleBulkAssignWard}
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 text-amber-300 border border-amber-500/35 text-xs font-bold cursor-pointer"
+                      >
+                        Gán phường
+                      </button>
+                    </div>
+
+                    {/* Xóa trùng */}
+                    <button
+                      type="button"
+                      disabled={bulkActionLoading}
+                      onClick={() => handleBulkDeleteDuplicates()}
+                      className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 disabled:opacity-40 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      title="Tự động dọn các dòng trùng Mã TK hoặc trùng địa chỉ (giữ bản đầy đủ nhất)"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Xóa trùng
                     </button>
                   </div>
 
-                  {/* Xóa trùng */}
-                  <button
-                    type="button"
-                    disabled={bulkActionLoading}
-                    onClick={() => handleBulkDeleteDuplicates()}
-                    className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 disabled:opacity-40 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                    title="Tự động dọn các dòng trùng Mã TK hoặc trùng địa chỉ (giữ bản đầy đủ nhất)"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Xóa trùng
-                  </button>
+                  {/* Nút Xuất Hometea & Post Writer */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={() =>
+                        handleExportToChannel(
+                          normalizedProperties.filter((it) =>
+                            selectedIds.has(it.id)
+                          ),
+                          "hometea"
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Xuất Hometea ({selectedIds.size})
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={() =>
+                        handleExportToChannel(
+                          normalizedProperties.filter((it) =>
+                            selectedIds.has(it.id)
+                          ),
+                          "post_writer"
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      Xuất Post Writer ({selectedIds.size})
+                    </button>
+                  </div>
                 </div>
 
-                {/* Nút Xuất Hometea & Post Writer */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={selectedIds.size === 0 || bulkActionLoading}
-                    onClick={() =>
-                      handleExportToChannel(
-                        normalizedProperties.filter((it) =>
-                          selectedIds.has(it.id)
-                        ),
-                        "hometea"
-                      )
-                    }
-                    className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Xuất Hometea ({selectedIds.size})
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedIds.size === 0 || bulkActionLoading}
-                    onClick={() =>
-                      handleExportToChannel(
-                        normalizedProperties.filter((it) =>
-                          selectedIds.has(it.id)
-                        ),
-                        "post_writer"
-                      )
-                    }
-                    className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    Xuất Post Writer ({selectedIds.size})
-                  </button>
-                </div>
+                {/* THANH TIẾN ĐỘ BÓC TÁCH BẰNG AI THEO LÔ 20 TIN */}
+                {(aiBatchProgress.isRunning || aiBatchProgress.totalCount > 0) && (
+                  <div className="p-3 rounded-xl bg-violet-950/40 border border-violet-500/35 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles
+                          className={`w-4 h-4 text-violet-300 ${
+                            aiBatchProgress.isRunning ? "animate-spin" : ""
+                          }`}
+                        />
+                        <span className="text-xs font-bold text-violet-200">
+                          {aiBatchProgress.isRunning
+                            ? `Đang bóc tách bằng AI: Lô ${aiBatchProgress.currentBatch}/${aiBatchProgress.totalBatches} (20 tin/lô)...`
+                            : `Hoàn tất bóc tách AI (${aiBatchProgress.processedCount}/${aiBatchProgress.totalCount} tin)`}
+                        </span>
+                        <span className="text-[11px] font-mono text-emerald-300">
+                          Thành công: {aiBatchProgress.successCount}
+                        </span>
+                        {aiBatchProgress.failedIds.length > 0 && (
+                          <span className="text-[11px] font-mono text-rose-300">
+                            Lỗi: {aiBatchProgress.failedIds.length}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {!aiBatchProgress.isRunning &&
+                          aiBatchProgress.failedIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRunAiBatchExtraction(
+                                  normalizedProperties.filter((it) =>
+                                    aiBatchProgress.failedIds.includes(it.id)
+                                  )
+                                )
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Thử lại {aiBatchProgress.failedIds.length} tin lỗi
+                            </button>
+                          )}
+                        {!aiBatchProgress.isRunning && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAiBatchProgress((prev) => ({
+                                ...prev,
+                                totalCount: 0,
+                                processedCount: 0,
+                                failedIds: [],
+                                lastError: null,
+                              }))
+                            }
+                            className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
+                          >
+                            Đóng
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden">
+                      <div
+                        className="h-full bg-violet-500 transition-all duration-300"
+                        style={{
+                          width: `${
+                            aiBatchProgress.totalCount > 0
+                              ? Math.round(
+                                  (aiBatchProgress.processedCount /
+                                    aiBatchProgress.totalCount) *
+                                    100
+                                )
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+
+                    {aiBatchProgress.lastError && (
+                      <div className="text-[11px] text-rose-300 font-mono">
+                        Chi tiết lỗi: {aiBatchProgress.lastError}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1573,9 +2163,12 @@ export default function App() {
                           />
                         </th>
                         <th className="py-3 px-3">Mã TK</th>
-                        <th className="py-3 px-3">Địa chỉ (Số nhà, Đường, Phường)</th>
+                        <th className="py-3 px-3">Địa chỉ (Số nhà, Tên đường, Phường)</th>
                         <th className="py-3 px-3">DT (Sổ / Thực tế)</th>
                         <th className="py-3 px-3">Giá</th>
+                        <th className="py-3 px-3 min-w-[340px]">
+                          Bóc tách AI & Bằng chứng (Sửa / Duyệt)
+                        </th>
                         <th className="py-3 px-3 text-center">Số ảnh</th>
                         <th className="py-3 px-3">Độ đầy đủ</th>
                         <th className="py-3 px-3">Trường còn thiếu (`thieu`)</th>
@@ -1587,6 +2180,7 @@ export default function App() {
                       {filteredItems.map((it) => {
                         const isSelected = selectedIds.has(it.id);
                         const isDrawerOpen = drawerItemId === it.id;
+                        const isInlineEditing = inlineAiRowId === it.id;
                         const kdMeta =
                           BUSINESS_STATUS_META[it.trang_thai_kinh_doanh];
                         const xlMeta =
@@ -1594,247 +2188,825 @@ export default function App() {
                         const completenessPct = Math.round(
                           (it.filledCount / it.totalMandatory) * 100
                         );
+                        const dacDiemList = Array.isArray(it.dac_diem)
+                          ? it.dac_diem
+                          : [];
 
                         return (
-                          <tr
-                            key={it.id}
-                            onClick={() => setDrawerItemId(it.id)}
-                            className={`transition-colors cursor-pointer ${
-                              isDrawerOpen
-                                ? "bg-amber-500/15 hover:bg-amber-500/20"
-                                : isSelected
-                                ? "bg-slate-800/80 hover:bg-slate-800"
-                                : "hover:bg-slate-800/45"
-                            }`}
-                          >
-                            {/* Checkbox */}
-                            <td
-                              className="py-2.5 px-3 text-center"
-                              onClick={(e) => toggleSelectOne(it.id, e)}
+                          <React.Fragment key={it.id}>
+                            <tr
+                              onClick={() => setDrawerItemId(it.id)}
+                              className={`transition-colors cursor-pointer ${
+                                isDrawerOpen
+                                  ? "bg-amber-500/15 hover:bg-amber-500/20"
+                                  : isSelected
+                                  ? "bg-slate-800/80 hover:bg-slate-800"
+                                  : "hover:bg-slate-800/45"
+                              }`}
                             >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer"
-                              />
-                            </td>
+                              {/* Checkbox */}
+                              <td
+                                className="py-2.5 px-3 text-center"
+                                onClick={(e) => toggleSelectOne(it.id, e)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer"
+                                />
+                              </td>
 
-                            {/* 1. Mã TK */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="flex flex-col gap-0.5">
-                                <span
-                                  className={`font-mono font-bold text-xs px-2 py-0.5 rounded border inline-block w-fit ${
-                                    it.isLegacyOrMissingMaTk
-                                      ? "bg-rose-500/15 text-rose-300 border-rose-500/40"
-                                      : "bg-slate-950 text-amber-300 border-slate-700"
-                                  }`}
-                                >
-                                  {it.ma_tk || it.suggestedMaTk}
-                                </span>
-                                {it.isLegacyOrMissingMaTk && (
-                                  <span className="text-[10px] text-rose-400 font-mono">
-                                    Gốc: {it.legacyToken || "Chưa có mã"}
+                              {/* 1. Mã TK */}
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <div className="flex flex-col gap-0.5">
+                                  <span
+                                    className={`font-mono font-bold text-xs px-2 py-0.5 rounded border inline-block w-fit ${
+                                      it.isLegacyOrMissingMaTk
+                                        ? "bg-rose-500/15 text-rose-300 border-rose-500/40"
+                                        : "bg-slate-950 text-amber-300 border-slate-700"
+                                    }`}
+                                  >
+                                    {it.ma_tk || it.suggestedMaTk}
                                   </span>
-                                )}
-                              </div>
-                            </td>
+                                  {it.isLegacyOrMissingMaTk && (
+                                    <span className="text-[10px] text-rose-400 font-mono">
+                                      Gốc: {it.legacyToken || "Chưa có mã"}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
 
-                            {/* 2. Địa chỉ */}
-                            <td className="py-2.5 px-3 max-w-[250px]">
-                              <div className="font-bold text-slate-100 truncate">
-                                {[it.so_nha, it.duong]
-                                  .filter(Boolean)
-                                  .join(" ") || (
-                                  <span className="text-slate-400 italic">
-                                    {it.raw.name}
+                              {/* 2. Địa chỉ */}
+                              <td className="py-2.5 px-3 max-w-[240px]">
+                                <div className="font-bold text-slate-100 truncate">
+                                  {[it.so_nha, it.ten_duong || it.duong]
+                                    .filter(Boolean)
+                                    .join(" ") || (
+                                    <span className="text-slate-400 italic">
+                                      {it.raw.name}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                                  <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span
+                                    className={
+                                      it.phuong
+                                        ? "text-slate-300 font-medium"
+                                        : "text-rose-400 font-semibold"
+                                    }
+                                  >
+                                    {it.phuong || "Thiếu phường"}
                                   </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
-                                <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
-                                <span
-                                  className={
-                                    it.phuong
-                                      ? "text-slate-300 font-medium"
-                                      : "text-rose-400 font-semibold"
-                                  }
-                                >
-                                  {it.phuong || "Thiếu phường"}
-                                </span>
-                              </div>
-                            </td>
+                                </div>
+                              </td>
 
-                            {/* 3. Diện tích (Sổ / Thực tế + Kích thước + Tầng) */}
-                            <td className="py-2.5 px-3 whitespace-nowrap font-mono">
-                              <div className="text-slate-100 font-bold">
-                                {it.dien_tich_so !== null ||
-                                it.dien_tich_thuc_te !== null ? (
+                              {/* 3. Diện tích (Sổ / Thực tế + Kích thước + Tầng) */}
+                              <td className="py-2.5 px-3 whitespace-nowrap font-mono">
+                                <div className="text-slate-100 font-bold">
+                                  {it.dien_tich_so !== null ||
+                                  it.dien_tich_thuc_te !== null ? (
+                                    <>
+                                      <span>{it.dien_tich_so ?? "—"}</span>
+                                      <span className="text-slate-500 mx-0.5">
+                                        /
+                                      </span>
+                                      <span className="text-amber-300">
+                                        {it.dien_tich_thuc_te ?? "—"}
+                                      </span>{" "}
+                                      <span className="text-[10px] text-slate-400 font-normal">
+                                        m²
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-rose-400 text-[11px]">
+                                      Thiếu DT
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {it.rong || "?"}×{it.dai || "?"}m ·{" "}
+                                  {it.so_tang ? `${it.so_tang} tầng` : "? tầng"}
+                                </div>
+                              </td>
+
+                              {/* 4. Giá */}
+                              <td className="py-2.5 px-3 whitespace-nowrap font-mono">
+                                {it.gia && it.gia > 0 ? (
                                   <>
-                                    <span>{it.dien_tich_so ?? "—"}</span>
-                                    <span className="text-slate-500 mx-0.5">
-                                      /
-                                    </span>
-                                    <span className="text-amber-300">
-                                      {it.dien_tich_thuc_te ?? "—"}
-                                    </span>{" "}
-                                    <span className="text-[10px] text-slate-400 font-normal">
-                                      m²
-                                    </span>
+                                    <div className="font-extrabold text-emerald-400 text-xs">
+                                      {it.gia_text}
+                                    </div>
+                                    {it.pricePerM2Text && (
+                                      <div
+                                        className={`text-[10px] ${
+                                          it.isAbnormalPricePerM2
+                                            ? "text-rose-400 font-bold"
+                                            : "text-slate-400"
+                                        }`}
+                                      >
+                                        {it.pricePerM2Text}
+                                      </div>
+                                    )}
                                   </>
                                 ) : (
-                                  <span className="text-rose-400 text-[11px]">
-                                    Thiếu DT
+                                  <span className="text-rose-400 text-[11px] font-semibold">
+                                    Thiếu giá
                                   </span>
                                 )}
-                              </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                {it.rong || "?"}×{it.dai || "?"}m ·{" "}
-                                {it.so_tang ? `${it.so_tang} tầng` : "? tầng"}
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* 4. Giá */}
-                            <td className="py-2.5 px-3 whitespace-nowrap font-mono">
-                              {it.gia && it.gia > 0 ? (
-                                <>
-                                  <div className="font-extrabold text-emerald-400 text-xs">
-                                    {it.gia_text}
-                                  </div>
-                                  {it.pricePerM2Text && (
-                                    <div
-                                      className={`text-[10px] ${
-                                        it.isAbnormalPricePerM2
-                                          ? "text-rose-400 font-bold"
-                                          : "text-slate-400"
-                                      }`}
-                                    >
-                                      {it.pricePerM2Text}
+                              {/* 5. CỘT BÓC TÁCH AI & BẰNG CHỨNG (SỬA / DUYỆT) */}
+                              <td
+                                className="py-2.5 px-3 max-w-[390px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="space-y-1.5">
+                                  {/* Hàng nhãn trạng thái AI & nút thao tác */}
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      {it.da_boc_tach_ai ? (
+                                        <span className="px-1.5 py-0.5 rounded bg-violet-500/20 border border-violet-500/40 text-violet-200 text-[10px] font-bold">
+                                          Đã bóc tách AI
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-medium">
+                                          Chưa chạy AI
+                                        </span>
+                                      )}
+
+                                      {it.aiNeedsConfirmKeys.length > 0 ? (
+                                        <span
+                                          className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-extrabold"
+                                          title={`Các trường NULL hoặc tin cậy thấp cần xác nhận: ${it.aiNeedsConfirmKeys.join(", ")}`}
+                                        >
+                                          Cần xác nhận ({it.aiNeedsConfirmKeys.length})
+                                        </span>
+                                      ) : it.da_boc_tach_ai ? (
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold">
+                                          Đã duyệt đủ
+                                        </span>
+                                      ) : null}
                                     </div>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-rose-400 text-[11px] font-semibold">
-                                  Thiếu giá
-                                </span>
-                              )}
-                            </td>
 
-                            {/* 5. Số ảnh (Không có nút phóng to theo yêu cầu #9) */}
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
-                                {it.imageUrls[0] ? (
-                                  <div className="w-6 h-6 rounded overflow-hidden shrink-0 bg-slate-900">
-                                    <SmartImage
-                                      src={it.imageUrls[0]}
-                                      alt=""
-                                      className="w-full h-full object-cover"
+                                    {!isViewer && (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isInlineEditing) {
+                                              setInlineAiRowId(null);
+                                            } else {
+                                              openInlineAiEditor(it);
+                                            }
+                                          }}
+                                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] font-bold cursor-pointer"
+                                        >
+                                          {isInlineEditing ? "Đóng ô sửa" : "Sửa/Duyệt"}
+                                        </button>
+                                        {it.trang_thai_xu_ly !== "san_sang" && (
+                                          <button
+                                            type="button"
+                                            disabled={inlineAiSaving}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleConfirmAiReady([it]);
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold cursor-pointer"
+                                            title="Xác nhận duyệt tất cả trường và chuyển sang trang_thai_xu_ly = 'san_sang'"
+                                          >
+                                            Xác nhận → Sẵn sàng
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Tóm tắt giá trị AI kèm đoạn bằng chứng */}
+                                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] bg-slate-950/70 p-2 rounded-lg border border-slate-800/90">
+                                    <div>
+                                      <span className="text-slate-400">Vị trí: </span>
+                                      {it.loai_vi_tri ? (
+                                        <span className="text-slate-100 font-semibold">
+                                          {LOAI_VI_TRI_LABELS[it.loai_vi_tri]}
+                                        </span>
+                                      ) : (
+                                        <span className="text-amber-400 font-bold">
+                                          NULL (Cần xác nhận)
+                                        </span>
+                                      )}
+                                      {it.nguon_trich_xuat?.loai_vi_tri?.bang_chung && (
+                                        <div
+                                          className="text-[10px] text-slate-400 italic truncate"
+                                          title={it.nguon_trich_xuat.loai_vi_tri.bang_chung}
+                                        >
+                                          “{it.nguon_trich_xuat.loai_vi_tri.bang_chung}”
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <span className="text-slate-400">Hướng: </span>
+                                      {it.huong ? (
+                                        <span className="text-slate-100 font-semibold">
+                                          {it.huong}
+                                        </span>
+                                      ) : (
+                                        <span className="text-amber-400 font-bold">
+                                          NULL
+                                        </span>
+                                      )}
+                                      {it.nguon_trich_xuat?.huong?.bang_chung && (
+                                        <div
+                                          className="text-[10px] text-slate-400 italic truncate"
+                                          title={it.nguon_trich_xuat.huong.bang_chung}
+                                        >
+                                          “{it.nguon_trich_xuat.huong.bang_chung}”
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="col-span-2">
+                                      <span className="text-slate-400">Pháp lý: </span>
+                                      {it.phap_ly ? (
+                                        <span className="text-emerald-300 font-semibold">
+                                          {it.phap_ly}
+                                        </span>
+                                      ) : (
+                                        <span className="text-amber-400 font-bold">
+                                          NULL (Cần xác nhận)
+                                        </span>
+                                      )}
+                                      {it.nguon_trich_xuat?.phap_ly?.bang_chung && (
+                                        <span
+                                          className="text-[10px] text-slate-400 italic ml-1"
+                                          title={it.nguon_trich_xuat.phap_ly.bang_chung}
+                                        >
+                                          — “{it.nguon_trich_xuat.phap_ly.bang_chung}”
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <span className="text-slate-400">PN/WC: </span>
+                                      <span className="text-slate-200 font-mono">
+                                        {it.so_phong_ngu ?? "NULL"} PN /{" "}
+                                        {it.so_wc ?? "NULL"} WC
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      <span className="text-slate-400">Đường vào: </span>
+                                      <span className="text-slate-200 font-mono">
+                                        {it.duong_vao_m !== null
+                                          ? `${it.duong_vao_m}m`
+                                          : "NULL"}
+                                      </span>
+                                    </div>
+
+                                    {(dacDiemList.length > 0 || it.hien_trang) && (
+                                      <div className="col-span-2 text-[10px] text-slate-300 truncate">
+                                        {dacDiemList.length > 0 && (
+                                          <span>
+                                            ĐĐ: {dacDiemList.join(", ")}
+                                          </span>
+                                        )}
+                                        {dacDiemList.length > 0 &&
+                                          it.hien_trang &&
+                                          " · "}
+                                        {it.hien_trang && (
+                                          <span>HT: {it.hien_trang}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 6. Số ảnh */}
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+                                  {it.imageUrls[0] ? (
+                                    <div className="w-6 h-6 rounded overflow-hidden shrink-0 bg-slate-900">
+                                      <SmartImage
+                                        src={it.imageUrls[0]}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
+                                  )}
+                                  <span
+                                    className={`font-mono font-bold text-xs ${
+                                      it.imageCount === 0
+                                        ? "text-rose-400"
+                                        : "text-slate-200"
+                                    }`}
+                                  >
+                                    {it.imageCount}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 7. Độ đầy đủ (x/11 trường bắt buộc) */}
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`font-mono font-extrabold text-xs ${
+                                      it.missingFieldKeys.length === 0
+                                        ? "text-emerald-400"
+                                        : it.filledCount >= 8
+                                        ? "text-amber-300"
+                                        : "text-rose-400"
+                                    }`}
+                                  >
+                                    {it.filledCount}/{it.totalMandatory}
+                                  </span>
+                                  <div className="w-14 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        it.missingFieldKeys.length === 0
+                                          ? "bg-emerald-500"
+                                          : it.filledCount >= 8
+                                          ? "bg-amber-500"
+                                          : "bg-rose-500"
+                                      }`}
+                                      style={{ width: `${completenessPct}%` }}
                                     />
                                   </div>
+                                </div>
+                              </td>
+
+                              {/* 8. Trường còn thiếu */}
+                              <td className="py-2.5 px-3 max-w-[230px]">
+                                {it.missingFieldLabels.length === 0 ? (
+                                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Đủ chuẩn
+                                  </span>
                                 ) : (
-                                  <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
+                                  <div className="flex flex-wrap gap-1">
+                                    {it.missingFieldLabels.map((lbl) => (
+                                      <span
+                                        key={lbl}
+                                        className="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/35 text-rose-300 text-[10px] font-semibold"
+                                      >
+                                        {lbl}
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
-                                <span
-                                  className={`font-mono font-bold text-xs ${
-                                    it.imageCount === 0
-                                      ? "text-rose-400"
-                                      : "text-slate-200"
-                                  }`}
-                                >
-                                  {it.imageCount}
-                                </span>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* 6. Độ đầy đủ (x/11 trường bắt buộc) */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`font-mono font-extrabold text-xs ${
-                                    it.missingFieldKeys.length === 0
-                                      ? "text-emerald-400"
-                                      : it.filledCount >= 8
-                                      ? "text-amber-300"
-                                      : "text-rose-400"
-                                  }`}
-                                >
-                                  {it.filledCount}/{it.totalMandatory}
-                                </span>
-                                <div className="w-14 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${
-                                      it.missingFieldKeys.length === 0
-                                        ? "bg-emerald-500"
-                                        : it.filledCount >= 8
-                                        ? "bg-amber-500"
-                                        : "bg-rose-500"
-                                    }`}
-                                    style={{ width: `${completenessPct}%` }}
-                                  />
+                              {/* 9. Trạng thái (2 cột: Kinh doanh + Xử lý) */}
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <div className="flex flex-col gap-1">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border w-fit ${xlMeta.badgeClass}`}
+                                  >
+                                    {xlMeta.label}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[9px] font-medium border w-fit ${kdMeta.badgeClass}`}
+                                  >
+                                    KD: {kdMeta.shortLabel}
+                                  </span>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* 7. Trường còn thiếu */}
-                            <td className="py-2.5 px-3 max-w-[230px]">
-                              {it.missingFieldLabels.length === 0 ? (
-                                <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold inline-flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Đủ chuẩn
-                                </span>
-                              ) : (
-                                <div className="flex flex-wrap gap-1">
-                                  {it.missingFieldLabels.map((lbl) => (
-                                    <span
-                                      key={lbl}
-                                      className="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/35 text-rose-300 text-[10px] font-semibold"
-                                    >
-                                      {lbl}
+                              {/* 10. Đã xuất đâu */}
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <div className="flex flex-col gap-1">
+                                  {it.da_xuat_hometea && (
+                                    <span className="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/35 text-cyan-300 text-[10px] font-bold inline-flex items-center gap-1 w-fit">
+                                      <Send className="w-2.5 h-2.5" />
+                                      Hometea
                                     </span>
-                                  ))}
+                                  )}
+                                  {it.da_xuat_fb && (
+                                    <span className="px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/35 text-indigo-300 text-[10px] font-bold inline-flex items-center gap-1 w-fit">
+                                      <Share2 className="w-2.5 h-2.5" />
+                                      Post Writer
+                                    </span>
+                                  )}
+                                  {!it.da_xuat_hometea && !it.da_xuat_fb && (
+                                    <span className="text-[10px] text-slate-500">
+                                      Chưa xuất
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                            </td>
+                              </td>
+                            </tr>
 
-                            {/* 8. Trạng thái (2 cột: Kinh doanh + Xử lý) */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="flex flex-col gap-1">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border w-fit ${xlMeta.badgeClass}`}
-                                >
-                                  {xlMeta.label}
-                                </span>
-                                <span
-                                  className={`px-1.5 py-0.2 rounded text-[9px] font-medium border w-fit ${kdMeta.badgeClass}`}
-                                >
-                                  KD: {kdMeta.shortLabel}
-                                </span>
-                              </div>
-                            </td>
+                            {/* Ô SỬA / DUYỆT TRỰC TIẾP TRONG BẢNG (INLINE AI EDITOR & EVIDENCE ROW) */}
+                            {isInlineEditing && (
+                              <tr
+                                className="bg-slate-950/95 border-b border-violet-500/40"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <td colSpan={11} className="p-4">
+                                  <div className="rounded-xl bg-slate-900 border border-violet-500/40 p-3.5 space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                                      <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-violet-400" />
+                                        <span className="text-xs font-bold text-violet-200">
+                                          Sửa / Duyệt Bóc Tách AI & Bằng Chứng Gốc — Mã{" "}
+                                          <span className="font-mono text-amber-300">
+                                            {it.ma_tk || it.suggestedMaTk}
+                                          </span>
+                                        </span>
+                                        <span className="text-[11px] text-slate-400">
+                                          (Các trường sửa tại đây sẽ được đánh dấu Đã sửa tay, chạy lại AI không ghi đè)
+                                        </span>
+                                      </div>
 
-                            {/* 9. Đã xuất đâu */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="flex flex-col gap-1">
-                                {it.da_xuat_hometea && (
-                                  <span className="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/35 text-cyan-300 text-[10px] font-bold inline-flex items-center gap-1 w-fit">
-                                    <Send className="w-2.5 h-2.5" />
-                                    Hometea
-                                  </span>
-                                )}
-                                {it.da_xuat_fb && (
-                                  <span className="px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/35 text-indigo-300 text-[10px] font-bold inline-flex items-center gap-1 w-fit">
-                                    <Share2 className="w-2.5 h-2.5" />
-                                    Post Writer
-                                  </span>
-                                )}
-                                {!it.da_xuat_hometea && !it.da_xuat_fb && (
-                                  <span className="text-[10px] text-slate-500">
-                                    Chưa xuất
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={inlineAiSaving}
+                                          onClick={() =>
+                                            handleSaveInlineAiEdit(it, false)
+                                          }
+                                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs cursor-pointer"
+                                        >
+                                          Lưu sửa tay
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={inlineAiSaving}
+                                          onClick={() =>
+                                            handleSaveInlineAiEdit(it, true)
+                                          }
+                                          className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5" />
+                                          Xác nhận duyệt & Chuyển Sẵn sàng
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setInlineAiRowId(null)
+                                          }
+                                          className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 text-xs cursor-pointer"
+                                        >
+                                          Đóng
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Văn bản gốc (content) để đối chiếu */}
+                                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-mono whitespace-pre-wrap max-h-28 overflow-y-auto">
+                                      <span className="text-amber-400 font-bold">
+                                        [Văn bản gốc content]:{" "}
+                                      </span>
+                                      {it.raw.content ||
+                                        it.raw.description ||
+                                        it.raw.name ||
+                                        "Không có nội dung văn bản gốc"}
+                                    </div>
+
+                                    {/* Lưới 10 trường AI kèm bằng chứng và ô nhập sửa */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                                      {/* 1. loai_vi_tri */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            1. Vị trí (`loai_vi_tri`)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "loai_vi_tri"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <select
+                                          value={inlineAiDraft.loai_vi_tri}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              loai_vi_tri: e.target
+                                                .value as LoaiViTriType | "",
+                                            }))
+                                          }
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        >
+                                          <option value="">
+                                            -- NULL (Chưa rõ) --
+                                          </option>
+                                          {LOAI_VI_TRI_OPTIONS.map((opt) => (
+                                            <option
+                                              key={opt.value}
+                                              value={opt.value}
+                                            >
+                                              {opt.value} — {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.loai_vi_tri
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 2. huong */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            2. Hướng (`huong`)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "huong"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <select
+                                          value={inlineAiDraft.huong}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              huong: e.target.value,
+                                            }))
+                                          }
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        >
+                                          <option value="">
+                                            -- NULL (Hometea: Không xác định) --
+                                          </option>
+                                          {HUONG_OPTIONS.map((h) => (
+                                            <option key={h} value={h}>
+                                              {h}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.huong
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 3. phap_ly */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            3. Pháp lý (`phap_ly`)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "phap_ly"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="text"
+                                          list={`phap-ly-inline-${it.id}`}
+                                          value={inlineAiDraft.phap_ly}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              phap_ly: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="NULL nếu không nói rõ..."
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        />
+                                        <datalist id={`phap-ly-inline-${it.id}`}>
+                                          {PHAP_LY_PRESETS.map((p) => (
+                                            <option key={p} value={p} />
+                                          ))}
+                                        </datalist>
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.phap_ly
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 4. so_phong_ngu & so_wc */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            4. Số PN / Số WC
+                                          </label>
+                                          {(it.aiNeedsConfirmKeys.includes(
+                                            "so_phong_ngu"
+                                          ) ||
+                                            it.aiNeedsConfirmKeys.includes(
+                                              "so_wc"
+                                            )) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={inlineAiDraft.so_phong_ngu}
+                                            onChange={(e) =>
+                                              setInlineAiDraft((prev) => ({
+                                                ...prev,
+                                                so_phong_ngu: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="PN (NULL)"
+                                            className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                          />
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={inlineAiDraft.so_wc}
+                                            onChange={(e) =>
+                                              setInlineAiDraft((prev) => ({
+                                                ...prev,
+                                                so_wc: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="WC (NULL)"
+                                            className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                          />
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.so_phong_ngu
+                                            ?.bang_chung ||
+                                            it.nguon_trich_xuat?.so_wc
+                                              ?.bang_chung ||
+                                            "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 5. so_nha & ten_duong */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            5. Số nhà & Tên đường
+                                          </label>
+                                          {(it.aiNeedsConfirmKeys.includes(
+                                            "so_nha"
+                                          ) ||
+                                            it.aiNeedsConfirmKeys.includes(
+                                              "ten_duong"
+                                            )) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <input
+                                            type="text"
+                                            value={inlineAiDraft.so_nha}
+                                            onChange={(e) =>
+                                              setInlineAiDraft((prev) => ({
+                                                ...prev,
+                                                so_nha: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="Số nhà"
+                                            className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={inlineAiDraft.ten_duong}
+                                            onChange={(e) =>
+                                              setInlineAiDraft((prev) => ({
+                                                ...prev,
+                                                ten_duong: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="Tên đường (bỏ chữ Đường)"
+                                            className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                          />
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.ten_duong
+                                            ?.bang_chung ||
+                                            it.nguon_trich_xuat?.so_nha
+                                              ?.bang_chung ||
+                                            "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 6. duong_vao_m */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            6. Đường vào (m)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "duong_vao_m"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          min="0"
+                                          value={inlineAiDraft.duong_vao_m}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              duong_vao_m: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="Số mét (NULL)"
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        />
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.duong_vao_m
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 7. dac_diem */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1 lg:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            7. Đặc điểm (`dac_diem`, cách nhau dấu phẩy)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "dac_diem"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={inlineAiDraft.dac_diem}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              dac_diem: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="VD: lô góc, view sông, thang máy..."
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        />
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.dac_diem
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+
+                                      {/* 8. hien_trang */}
+                                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1 lg:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] font-bold text-slate-300 uppercase">
+                                            8. Hiện trạng (`hien_trang`)
+                                          </label>
+                                          {it.aiNeedsConfirmKeys.includes(
+                                            "hien_trang"
+                                          ) && (
+                                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                              Cần xác nhận
+                                            </span>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={inlineAiDraft.hien_trang}
+                                          onChange={(e) =>
+                                            setInlineAiDraft((prev) => ({
+                                              ...prev,
+                                              hien_trang: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="VD: nhà mới, đang cho thuê 15 triệu/tháng..."
+                                          className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-100 outline-none focus:border-amber-500"
+                                        />
+                                        <div className="text-[10px] text-slate-400 italic truncate">
+                                          BC:{" "}
+                                          {it.nguon_trich_xuat?.hien_trang
+                                            ?.bang_chung || "Không có"}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>

@@ -13,6 +13,7 @@ interface SystemAndReportsViewProps {
   properties: Property[];
   currentUser: AuthUser | null;
   onBackToProperties?: () => void;
+  onOpenMigrationModal?: () => void;
 }
 
 interface SystemInfoData {
@@ -72,7 +73,8 @@ const DEFAULT_ACTIVITY_LOGS: ActivityLog[] = [];
 export default function SystemAndReportsView({
   properties,
   currentUser,
-  onBackToProperties
+  onBackToProperties,
+  onOpenMigrationModal
 }: SystemAndReportsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<"reports" | "logs" | "system">("reports");
   const [systemInfo, setSystemInfo] = useState<SystemInfoData | null>(null);
@@ -733,6 +735,41 @@ export default function SystemAndReportsView({
             <RefreshCw className={`w-4 h-4 ${loadingSystemInfo || testingDb ? "animate-spin text-amber-500" : ""}`} />
           </button>
         </div>
+      </div>
+
+      {/* Banner Chuẩn hóa 2 cột trạng thái & VIEW với cảnh báo */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start sm:items-center gap-3 min-w-0">
+          <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs sm:text-sm font-bold text-slate-100">
+                Chuẩn hóa 2 cột trạng thái (`trang_thai_kinh_doanh` &amp; `trang_thai_xu_ly`) &amp; VIEW `v_nguon_xuat`
+              </span>
+              <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
+                ⚠️ Đã hoàn tất, chạy lại có thể ghi đè trạng thái
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Đang quản lý <b>{properties.length}</b> nguồn nhà. Bấm <b>"Xem đề xuất ánh xạ"</b> để đối chiếu quy tắc chuyển đổi dữ liệu cũ sang 2 cột mới.
+            </p>
+          </div>
+        </div>
+
+        {onOpenMigrationModal && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onOpenMigrationModal}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Xem đề xuất ánh xạ ({properties.length} tin)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
