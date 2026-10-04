@@ -503,6 +503,38 @@ export default function App() {
     }
   };
 
+  // Bulk delete selected properties
+  const handleBulkDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn ${selectedIds.size} tin đã chọn khỏi hệ thống?`)) {
+      return;
+    }
+    setBulkActionLoading(true);
+    try {
+      const idsArr = Array.from(selectedIds);
+      const res = await safeFetchJson<{ success: boolean; deletedCount?: number }>(
+        "/api/properties/bulk-action",
+        {
+          method: "POST",
+          headers: getAuthHeaders(true),
+          body: JSON.stringify({ action: "delete_many", ids: idsArr }),
+          credentials: "include",
+        }
+      );
+      if (res.ok) {
+        showToast(`Đã xóa thành công ${res.data.deletedCount || idsArr.length} tin!`);
+        setSelectedIds(new Set());
+        setRefreshTrigger((prev) => prev + 1);
+      } else {
+        alert("Lỗi khi xóa: " + (res.error || "Không thể thực hiện"));
+      }
+    } catch (err: any) {
+      alert("Lỗi kết nối: " + err.message);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   // Export properties to external system / file
   const handleExportToChannel = async (itemsList: NormalizedWarehouseProperty[], target: "hometea" | "post_writer") => {
     if (itemsList.length === 0) return;
@@ -1228,6 +1260,16 @@ export default function App() {
 
                     <button
                       type="button"
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={handleBulkDeleteSelected}
+                      className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 disabled:opacity-40 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="Xóa tất cả các tin đã chọn"
+                    >
+                      🗑️ Xóa tin ({selectedIds.size})
+                    </button>
+
+                    <button
+                      type="button"
                       disabled={bulkActionLoading}
                       onClick={handleBulkDeleteDuplicates}
                       className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 disabled:opacity-40 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
@@ -1552,7 +1594,7 @@ export default function App() {
                                 </div>
                               </td>
 
-                              {/* Cột 6: Hành động (Duyệt + mở rộng) */}
+                              {/* Cột 6: Hành động (Duyệt + mở rộng + xóa) */}
                               <td className="py-1 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-1.5">
                                   <button
@@ -1572,6 +1614,17 @@ export default function App() {
                                     title="Sửa nhanh bóc tách"
                                   >
                                     ✎
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeletingProperty(it.raw || (it as unknown as Property));
+                                    }}
+                                    className="p-1 px-1.5 rounded bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[10px] font-bold cursor-pointer transition-colors"
+                                    title="Xóa tin này"
+                                  >
+                                    🗑️ Xóa
                                   </button>
                                 </div>
                               </td>
@@ -1683,6 +1736,10 @@ export default function App() {
                     isSelected={selectedIds.has(it.id)}
                     onSelectToggle={(e) => toggleSelectOne(it.id, e)}
                     onClick={() => setDrawerItemId(it.id)}
+                    onDelete={(e) => {
+                      e.stopPropagation();
+                      setDeletingProperty(it.raw || (it as unknown as Property));
+                    }}
                   />
                 ) : null)}
               </div>
@@ -1764,6 +1821,54 @@ export default function App() {
           onMigrationSuccess={() => setRefreshTrigger((prev) => prev + 1)}
           items={normalizedProperties}
         />
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA TIN */}
+      {deletingProperty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
+              ⚠️ Xác nhận xóa tin
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Bạn có chắc chắn muốn xóa vĩnh viễn tin{" "}
+              <strong className="text-amber-400 font-mono">
+                {deletingProperty.ma_tk || deletingProperty.name || deletingProperty.id}
+              </strong>{" "}
+              khỏi hệ thống? Hành động này không thể hoàn tác.
+            </p>
+            {deleteError && (
+              <p className="text-xs text-rose-400 font-semibold">{deleteError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingProperty(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await handleDeleteProperty(deletingProperty);
+                    setDeletingProperty(null);
+                    setDeleteError(null);
+                  } catch (err: any) {
+                    setDeleteError(err.message || "Lỗi khi xóa");
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Xóa vĩnh viễn
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

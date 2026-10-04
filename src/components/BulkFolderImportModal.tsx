@@ -1365,6 +1365,14 @@ export default function BulkFolderImportModal({
 
     setIsRunningQueue(false);
     onImportSuccess();
+
+    if (!stopSignalRef.current) {
+      clearBulkSessionInIndexedDB().catch(() => {});
+      // Auto close modal after brief delay when queue finishes successfully
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    }
   };
 
   const handleStopQueue = () => {
@@ -2281,7 +2289,9 @@ export default function BulkFolderImportModal({
                     ) : isStopped ? (
                       <span className="text-amber-400">Đã tạm dừng hàng đợi</span>
                     ) : (
-                      <span className="text-emerald-400">Hoàn tất tiến trình xử lý hàng đợi</span>
+                      <span className="text-emerald-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4" /> Hoàn tất tiến trình xử lý hàng đợi — Tự động đóng cửa sổ...
+                      </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
