@@ -9,6 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { BusinessStatusType, ProcessingStatusType } from "../types";
+import { safeFetchJson } from "../utils/apiClient";
 import {
   NormalizedWarehouseProperty,
   BUSINESS_STATUS_META,
@@ -18,17 +19,19 @@ import {
 interface MigrationProposalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  items: NormalizedWarehouseProperty[];
-  onConfirmMigration: (
+  items?: NormalizedWarehouseProperty[];
+  onConfirmMigration?: (
     batchItems: Array<{ id: string; changes: Record<string, any> }>
   ) => Promise<void>;
+  onMigrationSuccess?: () => void;
 }
 
 export default function MigrationProposalModal({
   isOpen,
   onClose,
-  items,
+  items = [],
   onConfirmMigration,
+  onMigrationSuccess,
 }: MigrationProposalModalProps) {
   const [assignMissingMaTk, setAssignMissingMaTk] = useState(true);
   const [syncStructuredFields, setSyncStructuredFields] = useState(true);
@@ -107,10 +110,32 @@ export default function MigrationProposalModal({
         };
       });
 
-      await onConfirmMigration(batch);
+      if (onConfirmMigration) {
+        await onConfirmMigration(batch);
+      } else {
+        const token = localStorage.getItem("admin_token");
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        // Attempt sequential updates over PUT /api/properties/:id
+        for (const task of batch) {
+          await safeFetchJson(`/api/properties/${task.id}`, {
+            method: "PUT",
+            headers,
+            body: JSON.stringify(task.changes),
+            credentials: "include",
+          });
+        }
+      }
+
       setDoneMessage(
         `Đã ánh xạ và đồng bộ thành công ${batch.length} bản ghi sang 2 cột trạng thái chuẩn!`
       );
+      if (onMigrationSuccess) {
+        onMigrationSuccess();
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + (err?.message || err));
     } finally {
       setIsRunning(false);
     }

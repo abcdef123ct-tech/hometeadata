@@ -147,7 +147,12 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <div>
             <div className="text-sm font-bold text-slate-100 line-clamp-1 group-hover:text-amber-400 transition-colors">
               {[norm.so_nha, norm.duong].filter(Boolean).join(" ") ||
-                prop.name}
+                norm.cleanAddress ||
+                norm.dia_chi ||
+                norm.name ||
+                prop.name ||
+                norm.ma_tk ||
+                "Bất động sản"}
             </div>
             <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
               <MapPin className="w-3 h-3 text-amber-400 shrink-0" />

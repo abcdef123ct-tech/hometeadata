@@ -21,11 +21,13 @@ import { formatVndToReadable } from "../utils/bulkFolderParser";
 import { safeFetchJson } from "../utils/apiClient";
 
 interface ExportLogsViewProps {
-  items: NormalizedWarehouseProperty[];
-  exportLogs: ExportLogEntry[];
-  onRefreshLogs: () => void;
-  onExportViewData: (format: "json" | "csv") => Promise<void>;
-  onSelectItem: (item: NormalizedWarehouseProperty) => void;
+  items?: NormalizedWarehouseProperty[];
+  exportLogs?: ExportLogEntry[];
+  onRefreshLogs?: () => void;
+  onExportViewData?: (format: "json" | "csv") => Promise<void>;
+  onSelectItem?: (item: NormalizedWarehouseProperty) => void;
+  logs?: ExportLogEntry[]; // fallback log parameter
+  onBackToProperties?: () => void;
 }
 
 const V_NGUON_XUAT_SQL = `-- Đảm bảo mọi bản ghi cũ đều có ma_tk chuẩn trước khi truy vấn VIEW
@@ -92,10 +94,12 @@ SELECT
 FROM chu_nha_can_ban;`;
 
 export default function ExportLogsView({
-  items,
+  items = [],
   exportLogs,
   onExportViewData,
   onSelectItem,
+  logs,
+  onBackToProperties,
 }: ExportLogsViewProps) {
   const [activeSubView, setActiveSubView] = useState<"logs" | "v_nguon_xuat">(
     "logs"
@@ -103,6 +107,12 @@ export default function ExportLogsView({
   const [showSql, setShowSql] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [remoteViewStatus, setRemoteViewStatus] = useState<string | null>(null);
+
+  const displayLogs = useMemo(() => {
+    if (exportLogs && exportLogs.length > 0) return exportLogs;
+    if (logs && logs.length > 0) return logs;
+    return [];
+  }, [exportLogs, logs]);
 
   const viewRows: Array<{
     norm: NormalizedWarehouseProperty;
@@ -141,201 +151,126 @@ export default function ExportLogsView({
   };
 
   return (
-    <div className="space-y-5">
-      {/* Top Header & Sub-navigation */}
-      <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fadeIn">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-base sm:text-lg font-bold text-slate-100">
-              Nhật ký xuất & VIEW `v_nguon_xuat` (Hometea / Post Writer)
+            {onBackToProperties && (
+              <button
+                onClick={onBackToProperties}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold"
+              >
+                ← Quay lại Kho
+              </button>
+            )}
+            <h2 className="text-xl font-extrabold text-slate-100 flex items-center gap-2 tracking-tight">
+              <History className="w-5 h-5 text-cyan-400" />
+              Nhật ký Truy xuất & Đồng bộ Dữ liệu
             </h2>
           </div>
           <p className="text-xs text-slate-400">
-            Theo dõi lịch sử đẩy nguồn sang Hometea & Post Writer, kiểm tra trực tiếp 13 cột chuẩn của VIEW{" "}
-            <code className="text-cyan-300">v_nguon_xuat</code> (không lọc ngầm, ẩn hoàn toàn thông tin nội bộ).
+            Xem danh sách các đợt xuất file JSON, CSV, đồng bộ sang Hometea và đăng bài Post Writer.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        {/* Sub-view switcher */}
+        <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 self-start sm:self-center shrink-0">
           <button
             type="button"
             onClick={() => setActiveSubView("logs")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer border ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeSubView === "logs"
-                ? "bg-amber-500 text-slate-950 border-amber-500"
-                : "bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800"
+                ? "bg-cyan-500 text-slate-950 font-extrabold"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <History className="w-3.5 h-3.5" />
-            Nhật ký xuất ({exportLogs.length})
+            Nhật ký đợt xuất
           </button>
-
           <button
             type="button"
             onClick={() => setActiveSubView("v_nguon_xuat")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer border ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeSubView === "v_nguon_xuat"
-                ? "bg-cyan-500 text-slate-950 border-cyan-500"
-                : "bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800"
+                ? "bg-cyan-500 text-slate-950 font-extrabold"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Database className="w-3.5 h-3.5" />
-            Bảng VIEW v_nguon_xuat ({viewRows.length} dòng)
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowSql((s) => !s)}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-          >
-            <Code2 className="w-3.5 h-3.5 text-amber-400" />
-            {showSql ? "Ẩn SQL VIEW" : "Xem SQL VIEW v_nguon_xuat"}
+            Bản xem trước VIEW v_nguon_xuat
           </button>
         </div>
       </div>
 
-      {/* SQL Box for v_nguon_xuat */}
-      {showSql && (
-        <div className="p-4 rounded-2xl bg-slate-950 border border-cyan-500/40 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs text-cyan-300 font-semibold">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>
-                Định nghĩa SQL chuẩn của <code>v_nguon_xuat</code> (13 cột chuẩn — KHÔNG chứa{" "}
-                <code>sdt_nguon</code>, <code>moi_gioi_nguon</code>,{" "}
-                <code>mo_ta_tho</code>)
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopySql}
-              className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-            >
-              {copiedSql ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  Đã sao chép SQL
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  Sao chép SQL chạy trên Supabase
-                </>
-              )}
-            </button>
-          </div>
-          <pre className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-200 overflow-x-auto max-h-72">
-            {V_NGUON_XUAT_SQL}
-          </pre>
-        </div>
-      )}
-
-      {/* SUB-VIEW 1: NHẬT KÝ XUẤT */}
-      {activeSubView === "logs" && (
-        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-100">
-                Lịch sử xuất dữ liệu sang Hometea & Post Writer
-              </h3>
-              <p className="text-xs text-slate-400">
-                Ghi nhận thời gian, người xuất, kênh đích và danh sách Mã TK trong từng đợt xuất.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onExportViewData("json")}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Xuất JSON v_nguon_xuat
-              </button>
-              <button
-                type="button"
-                onClick={() => onExportViewData("csv")}
-                className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                Xuất CSV v_nguon_xuat
-              </button>
-            </div>
+      {activeSubView === "logs" ? (
+        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-xl">
+          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-100">
+              Nhật ký chi tiết các đợt đồng bộ ({displayLogs.length})
+            </h3>
           </div>
 
-          {exportLogs.length === 0 ? (
-            <div className="p-10 text-center space-y-2">
-              <History className="w-8 h-8 text-slate-500 mx-auto" />
-              <p className="text-sm font-bold text-slate-200">
-                Chưa có nhật ký xuất nào được ghi nhận
-              </p>
-              <p className="text-xs text-slate-400">
-                Chọn các dòng trong Bảng Kho Chuẩn rồi bấm "Đẩy Hometea", "Xuất Post Writer" hoặc tải file v_nguon_xuat để ghi nhật ký tự động.
-              </p>
+          {displayLogs.length === 0 ? (
+            <div className="p-12 text-center text-slate-500 space-y-2">
+              <Database className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="text-sm">Chưa có lượt đồng bộ hay xuất bản dữ liệu nào được ghi nhận.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
+                <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800 uppercase text-[10px] tracking-wider font-bold">
                   <tr>
-                    <th className="py-2.5 px-4">Thời gian</th>
-                    <th className="py-2.5 px-4">Kênh xuất đích</th>
-                    <th className="py-2.5 px-4">Số lượng</th>
-                    <th className="py-2.5 px-4">Danh sách Mã TK</th>
-                    <th className="py-2.5 px-4">Người thực hiện</th>
-                    <th className="py-2.5 px-4">Ghi chú</th>
+                    <th className="py-3 px-4">Thời gian xuất</th>
+                    <th className="py-3 px-4">Kênh truyền / Định dạng</th>
+                    <th className="py-3 px-4 text-center">Số bản ghi</th>
+                    <th className="py-3 px-4">Người thực hiện</th>
+                    <th className="py-3 px-4">Mã TK đã đồng bộ</th>
+                    <th className="py-3 px-4">Ghi chú</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
-                  {exportLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-800/40">
-                      <td className="py-2.5 px-4 font-mono text-slate-300 whitespace-nowrap">
+                  {displayLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-800/30">
+                      <td className="py-3.5 px-4 font-mono text-slate-300">
                         {new Date(log.created_at).toLocaleString("vi-VN")}
                       </td>
-                      <td className="py-2.5 px-4">
+                      <td className="py-3.5 px-4">
                         <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-bold border inline-flex items-center gap-1 ${
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-flex items-center gap-1 ${
                             log.target === "hometea"
-                              ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/35"
+                              ? "bg-cyan-500/15 border-cyan-500/35 text-cyan-300"
                               : log.target === "post_writer"
-                              ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/35"
-                              : "bg-emerald-500/15 text-emerald-300 border-emerald-500/35"
+                              ? "bg-indigo-500/15 border-indigo-500/35 text-indigo-300"
+                              : "bg-emerald-500/15 border-emerald-500/35 text-emerald-300"
                           }`}
                         >
-                          {log.target === "hometea" ? (
-                            <Send className="w-3 h-3" />
-                          ) : log.target === "post_writer" ? (
-                            <Share2 className="w-3 h-3" />
-                          ) : (
-                            <Database className="w-3 h-3" />
-                          )}
+                          {log.target === "hometea" && <Send className="w-2.5 h-2.5" />}
+                          {log.target === "post_writer" && <Share2 className="w-2.5 h-2.5" />}
                           {log.target_label}
                         </span>
                       </td>
-                      <td className="py-2.5 px-4 font-mono font-bold text-amber-300">
-                        {log.record_count} tin
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-200">
+                        {log.record_count}
                       </td>
-                      <td className="py-2.5 px-4">
-                        <div className="flex flex-wrap gap-1 max-w-md">
-                          {log.ma_tk_list.slice(0, 8).map((code) => (
+                      <td className="py-3.5 px-4 text-slate-300 font-medium">
+                        {log.exported_by}
+                      </td>
+                      <td className="py-3.5 px-4 max-w-[280px]">
+                        <div className="flex flex-wrap gap-1">
+                          {log.ma_tk_list.slice(0, 10).map((m) => (
                             <span
-                              key={code}
-                              className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-mono text-[10px]"
+                              key={m}
+                              className="px-1.5 py-0.2 rounded bg-slate-950 text-[10px] text-amber-300 font-mono font-semibold border border-slate-800"
                             >
-                              {code}
+                              {m}
                             </span>
                           ))}
-                          {log.ma_tk_list.length > 8 && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
-                              +{log.ma_tk_list.length - 8} mã
+                          {log.ma_tk_list.length > 10 && (
+                            <span className="text-[10px] text-slate-500 font-bold self-center pl-1">
+                              +{log.ma_tk_list.length - 10} tin khác
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="py-2.5 px-4 text-slate-300">
-                        {log.exported_by}
-                      </td>
-                      <td className="py-2.5 px-4 text-slate-400">
+                      <td className="py-3.5 px-4 text-slate-400 italic max-w-xs truncate">
                         {log.note || "—"}
                       </td>
                     </tr>
@@ -345,124 +280,162 @@ export default function ExportLogsView({
             </div>
           )}
         </div>
-      )}
-
-      {/* SUB-VIEW 2: TRỰC TIẾP BẢNG VIEW v_nguon_xuat */}
-      {activeSubView === "v_nguon_xuat" && (
-        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-100">
-                  Dữ liệu VIEW `v_nguon_xuat` ({viewRows.length} dòng — Đủ mọi dòng, KHÔNG lọc ngầm)
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
-                  Đã loại bỏ sdt_nguon, moi_gioi_nguon, mo_ta_tho
-                </span>
-              </div>
-              {remoteViewStatus && (
-                <p className="text-[11px] text-slate-400">{remoteViewStatus}</p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onExportViewData("json")}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Tải JSON ({viewRows.length} dòng)
-              </button>
-              <button
-                type="button"
-                onClick={() => onExportViewData("csv")}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                Tải CSV
-              </button>
+      ) : (
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-cyan-950/25 border border-cyan-500/30 flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-cyan-300 block">
+                {remoteViewStatus || "Trạng thái VIEW v_nguon_xuat"}
+              </span>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                VIEW `v_nguon_xuat` là bảng ảo chuẩn hóa, thời gian thực, tự động gán Mã TK chuẩn và dọn sạch sđt/tên chủ nhà để kết nối an toàn ra ngoài.
+              </p>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 font-mono text-[11px]">
-                <tr>
-                  <th className="py-2.5 px-3">ma_tk</th>
-                  <th className="py-2.5 px-3">so_nha</th>
-                  <th className="py-2.5 px-3">duong</th>
-                  <th className="py-2.5 px-3">phuong</th>
-                  <th className="py-2.5 px-3">dien_tich_so</th>
-                  <th className="py-2.5 px-3">dien_tich_thuc_te</th>
-                  <th className="py-2.5 px-3">so_tang</th>
-                  <th className="py-2.5 px-3">rong</th>
-                  <th className="py-2.5 px-3">dai</th>
-                  <th className="py-2.5 px-3">gia</th>
-                  <th className="py-2.5 px-3">anh</th>
-                  <th className="py-2.5 px-3">trang_thai_xu_ly</th>
-                  <th className="py-2.5 px-3">thieu</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/70 font-mono text-[11px]">
-                {viewRows.map(({ norm, row }) => (
-                  <tr
-                    key={norm.id}
-                    onClick={() => onSelectItem(norm)}
-                    className="hover:bg-slate-800/50 cursor-pointer"
+          <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-xl">
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100">
+                  Dữ liệu v_nguon_xuat xem trước ({viewRows.length} dòng)
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSql(!showSql)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-slate-700"
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  Xem SQL VIEW v_nguon_xuat
+                </button>
+                {onExportViewData && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onExportViewData("json")}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Xuất JSON chuẩn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onExportViewData("csv")}
+                      className="px-3 py-1.5 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                      Xuất CSV chuẩn
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {showSql && (
+              <div className="p-4 bg-slate-950 border-b border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 uppercase font-mono font-bold tracking-wider">
+                    Lệnh SQL tạo VIEW v_nguon_xuat
+                  </span>
+                  <button
+                    onClick={handleCopySql}
+                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center gap-1"
                   >
-                    <td className="py-2 px-3 font-bold text-amber-300 whitespace-nowrap">
-                      {row.ma_tk}
-                    </td>
-                    <td className="py-2 px-3 text-slate-200">
-                      {row.so_nha || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-200 max-w-[160px] truncate">
-                      {row.duong || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">
-                      {row.phuong || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-200">
-                      {row.dien_tich_so ?? "null"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-200">
-                      {row.dien_tich_thuc_te ?? "null"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">
-                      {row.so_tang || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">
-                      {row.rong || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">
-                      {row.dai || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-emerald-400 whitespace-nowrap">
-                      {row.gia ? formatVndToReadable(row.gia) : "null"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">
-                      [{Array.isArray(row.anh) ? row.anh.length : 0} ảnh]
-                    </td>
-                    <td className="py-2 px-3">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-sans font-bold border ${
-                          PROCESSING_STATUS_META[row.trang_thai_xu_ly]
-                            .badgeClass
-                        }`}
-                      >
-                        {row.trang_thai_xu_ly}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-rose-300 max-w-[200px] truncate">
-                      {row.thieu || (
-                        <span className="text-emerald-400">"" (Đủ)</span>
-                      )}
-                    </td>
+                    {copiedSql ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        Đã sao chép
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        Sao chép SQL
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="text-[11px] font-mono p-3 rounded-lg bg-slate-900 text-cyan-300 overflow-x-auto max-h-48 leading-relaxed">
+                  {V_NGUON_XUAT_SQL}
+                </pre>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800 uppercase text-[10px] tracking-wider font-bold">
+                  <tr>
+                    <th className="py-2.5 px-4 w-28">Mã TK</th>
+                    <th className="py-2.5 px-4 w-48">Địa chỉ (`so_nha` / `duong`)</th>
+                    <th className="py-2.5 px-4 w-28">Phường</th>
+                    <th className="py-2.5 px-4 w-28 text-center">Diện tích (Sổ/TT)</th>
+                    <th className="py-2.5 px-4 w-28">Kích thước / Tầng</th>
+                    <th className="py-2.5 px-4 w-24">Giá chào</th>
+                    <th className="py-2.5 px-4 w-28">Trạng thái xử lý</th>
+                    <th className="py-2.5 px-4">Sự thiếu hụt chuẩn hóa (`thieu`)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/70">
+                  {viewRows.slice(0, 50).map(({ norm, row }) => (
+                    <tr key={norm.id} className="hover:bg-slate-800/20">
+                      <td className="py-2.5 px-4 font-mono font-bold text-amber-300">
+                        {row.ma_tk}
+                      </td>
+                      <td className="py-2.5 px-4 truncate max-w-[200px]">
+                        <span className="font-bold text-slate-200">
+                          {row.so_nha || <span className="text-slate-600 font-normal">Chưa gán</span>}
+                        </span>{" "}
+                        <span className="text-slate-400">
+                          {row.duong || <span className="text-slate-600 font-normal">Chưa gán</span>}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-300">{row.phuong}</td>
+                      <td className="py-2.5 px-4 text-center font-mono font-medium">
+                        {row.dien_tich_so || "—"}/{row.dien_tich_thuc_te || "—"}{" "}
+                        <span className="text-[10px] text-slate-500">m²</span>
+                      </td>
+                      <td className="py-2.5 px-4 font-mono text-slate-400">
+                        {row.rong || "?"}×{row.dai || "?"}m · {row.so_tang ? `${row.so_tang} t` : "? t"}
+                      </td>
+                      <td className="py-2.5 px-4 font-mono font-bold text-emerald-400">
+                        {row.gia ? formatVndToReadable(row.gia) : "—"}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            PROCESSING_STATUS_META[row.trang_thai_xu_ly]?.badgeClass || ""
+                          }`}
+                        >
+                          {row.trang_thai_xu_ly}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        {row.thieu ? (
+                          <div className="flex flex-wrap gap-1 max-w-[220px]">
+                            {row.thieu.split(", ").map((t) => (
+                              <span
+                                key={t}
+                                className="px-1.5 py-0.2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[9px] font-bold"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-emerald-400 font-bold text-[10px]">👑 Hoàn hảo (11/11)</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {viewRows.length > 50 && (
+              <div className="p-4 bg-slate-950/60 text-center text-xs text-slate-500 font-medium">
+                Đang hiển thị 50 bản ghi đầu tiên trong tổng số {viewRows.length} bản ghi của VIEW v_nguon_xuat.
+              </div>
+            )}
           </div>
         </div>
       )}

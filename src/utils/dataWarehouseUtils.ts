@@ -150,6 +150,9 @@ export const PROCESSING_STATUS_META: Record<
 export interface NormalizedWarehouseProperty {
   raw: Property;
   id: string;
+  name: string;
+  dia_chi: string;
+  cleanAddress: string;
   ma_tk: string;
   raw_ma_tk: string;
   isLegacyOrMissingMaTk: boolean;
@@ -201,6 +204,8 @@ export interface NormalizedWarehouseProperty {
   // Đã xuất đâu
   da_xuat_hometea: boolean;
   da_xuat_fb: boolean;
+  hometea_id: string | null;
+  hometea_trang_thai: string | null;
 
   // Độ đầy đủ & Trường thiếu
   missingFieldKeys: MandatoryFieldKey[];
@@ -332,9 +337,10 @@ export function normalizePropertyRecord(
   prop: Property,
   indexFallback = 1
 ): NormalizedWarehouseProperty {
-  const parsedLegacy = parsePropertyData(prop);
-  const rawName = (prop.name || "").trim();
-  const rawContent = (prop.content || "").trim();
+  const safeProp = prop || ({} as Property);
+  const parsedLegacy = parsePropertyData(safeProp);
+  const rawName = (safeProp.name || "").trim();
+  const rawContent = (safeProp.content || "").trim();
 
   // Try parsing rawName as a folder name if structured fields are missing
   const folderParsed = rawName ? parseFolderName(rawName, prop.phuong || prop.district || "") : null;
@@ -835,9 +841,28 @@ export function normalizePropertyRecord(
 
   const areaCheck = validateAreaCrossCheck(dien_tich_so, dien_tich_thuc_te, rong, dai);
 
+  const fullAddress =
+    prop.dia_chi ||
+    [so_nha, duong || ten_duong, phuong].filter(Boolean).join(", ") ||
+    prop.name ||
+    "";
+  const displayName =
+    prop.name ||
+    [so_nha, duong || ten_duong].filter(Boolean).join(" ") ||
+    fullAddress ||
+    effectiveMaTk ||
+    "Tin Bất Động Sản";
+  const cleanAddr =
+    [so_nha, duong || ten_duong].filter(Boolean).join(" ") ||
+    fullAddress ||
+    displayName;
+
   return {
     raw: prop,
     id: prop.id || `temp-${indexFallback}`,
+    name: displayName,
+    dia_chi: fullAddress,
+    cleanAddress: cleanAddr,
     ma_tk: effectiveMaTk,
     raw_ma_tk: prop.ma_tk || "",
     isLegacyOrMissingMaTk,
@@ -880,6 +905,8 @@ export function normalizePropertyRecord(
     trang_thai_xu_ly,
     da_xuat_hometea,
     da_xuat_fb,
+    hometea_id: prop.hometea_id || null,
+    hometea_trang_thai: prop.hometea_trang_thai || "chua_dang",
     missingFieldKeys,
     missingFieldLabels,
     thieuString: missingFieldKeys.join(", "),

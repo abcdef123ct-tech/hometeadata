@@ -18,13 +18,16 @@ import {
 } from "../utils/dataWarehouseUtils";
 
 interface DataQualityViewProps {
-  items: NormalizedWarehouseProperty[];
-  onSelectItem: (item: NormalizedWarehouseProperty) => void;
-  onAssignAllLegacyMaTk: (
+  items?: NormalizedWarehouseProperty[];
+  onSelectItem?: (item: NormalizedWarehouseProperty) => void;
+  onAssignAllLegacyMaTk?: (
     records: NormalizedWarehouseProperty[]
   ) => Promise<void>;
-  onDeleteDuplicates: (idsToDelete: string[]) => Promise<void>;
-  isAdminOrStaff: boolean;
+  onDeleteDuplicates?: (idsToDelete: string[]) => Promise<void>;
+  isAdminOrStaff?: boolean;
+  properties?: any; // fallback to allow the old properties prop
+  onBackToProperties?: () => void; // fallback back button prop
+  currentUser?: any;
 }
 
 type QualitySubTab =
@@ -34,12 +37,19 @@ type QualitySubTab =
   | "abnormal_price";
 
 export default function DataQualityView({
-  items,
+  items = [],
   onSelectItem,
   onAssignAllLegacyMaTk,
   onDeleteDuplicates,
   isAdminOrStaff,
+  properties,
+  onBackToProperties,
+  currentUser,
 }: DataQualityViewProps) {
+  const effectiveIsAdminOrStaff =
+    isAdminOrStaff !== undefined
+      ? isAdminOrStaff
+      : currentUser?.role === "admin" || currentUser?.role === "staff";
   const [activeSubTab, setActiveSubTab] =
     useState<QualitySubTab>("missing_matk");
   const [missingFieldFilter, setMissingFieldFilter] = useState<
@@ -48,10 +58,20 @@ export default function DataQualityView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+  // Fallback to properties if items list is empty or undefined
+  const dataItems = useMemo(() => {
+    if (items && items.length > 0) return items;
+    if (properties && Array.isArray(properties)) {
+      // If we got properties directly, they might need normalization, but since they're passed to DataQualityView, they usually are already Normalized.
+      return properties;
+    }
+    return [];
+  }, [items, properties]);
+
   // 1. Nhóm trùng ma_tk
   const duplicateGroups = useMemo(() => {
     const map = new Map<string, NormalizedWarehouseProperty[]>();
-    for (const it of items) {
+    for (const it of dataItems) {
       const code = (it.ma_tk || "").trim().toUpperCase();
       if (!code || it.isLegacyOrMissingMaTk) continue;
       const arr = map.get(code) || [];
@@ -70,322 +90,258 @@ export default function DataQualityView({
       }
     }
     return groups;
-  }, [items]);
+  }, [dataItems]);
 
   // 2. Bản ghi không có ma_tk chuẩn (kiểu cũ #10, #11 hoặc rỗng)
   const legacyOrMissingMaTkList = useMemo(() => {
-    return items.filter((it) => it.isLegacyOrMissingMaTk);
-  }, [items]);
+    return dataItems.filter((it) => it.isLegacyOrMissingMaTk);
+  }, [dataItems]);
 
   // 3. Bản ghi thiếu trường bắt buộc
   const missingFieldsList = useMemo(() => {
-    return items.filter((it) => {
+    return dataItems.filter((it) => {
       if (it.missingFieldKeys.length === 0) return false;
       if (missingFieldFilter === "all") return true;
       return it.missingFieldKeys.includes(missingFieldFilter);
     });
-  }, [items, missingFieldFilter]);
+  }, [dataItems, missingFieldFilter]);
 
   // 4. Giá/m2 bất thường hoặc lệch diện tích
   const abnormalPriceOrAreaList = useMemo(() => {
-    return items.filter(
+    return dataItems.filter(
       (it) =>
         it.isAbnormalPricePerM2 ||
         it.needsAreaReview ||
         it.needsAreaLightCheck
     );
-  }, [items]);
+  }, [dataItems]);
 
   const handleFixAllLegacyMaTk = async () => {
-    if (!isAdminOrStaff || legacyOrMissingMaTkList.length === 0) return;
+    if (!effectiveIsAdminOrStaff || legacyOrMissingMaTkList.length === 0) return;
+    if (
+      !window.confirm(
+        `Xác nhận chạy gán Mã TK chuẩn tự động cho toàn bộ ${legacyOrMissingMaTkList.length} bản ghi chưa chuẩn hóa?`
+      )
+    ) {
+      return;
+    }
     setIsProcessing(true);
-    setActionMessage(null);
+    setActionMessage("Đang chuẩn hóa mã...");
     try {
-      await onAssignAllLegacyMaTk(legacyOrMissingMaTkList);
-      setActionMessage(
-        `Đã gán Mã TK chuẩn cho ${legacyOrMissingMaTkList.length} bản ghi kiểu cũ thành công!`
-      );
+      if (onAssignAllLegacyMaTk) {
+        await onAssignAllLegacyMaTk(legacyOrMissingMaTkList);
+        setActionMessage("Đã gán mã thành công!");
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
     } finally {
       setIsProcessing(false);
+      setTimeout(() => setActionMessage(null), 2500);
     }
   };
 
-  const handleRemoveAllDuplicates = async () => {
-    if (!isAdminOrStaff || duplicateGroups.length === 0) return;
-    const idsToDelete: string[] = [];
-    for (const grp of duplicateGroups) {
-      // Keep grp.records[0] (most complete), delete the rest
-      for (let i = 1; i < grp.records.length; i++) {
-        idsToDelete.push(grp.records[i].id);
-      }
+  const handleResolveDuplicateGroup = async (
+    ma_tk: string,
+    records: NormalizedWarehouseProperty[]
+  ) => {
+    if (!effectiveIsAdminOrStaff || records.length <= 1) return;
+    const toKeep = records[0];
+    const toDelete = records.slice(1);
+    if (
+      !window.confirm(
+        `Giữ lại bản ghi đầy đủ nhất (${toKeep.filledCount}/11) và XÓA ${toDelete.length} bản ghi trùng lặp cho Mã ${ma_tk}?`
+      )
+    ) {
+      return;
     }
-    if (idsToDelete.length === 0) return;
     setIsProcessing(true);
-    setActionMessage(null);
     try {
-      await onDeleteDuplicates(idsToDelete);
-      setActionMessage(
-        `Đã dọn sạch ${idsToDelete.length} bản ghi trùng Mã TK (giữ lại bản đầy đủ nhất)!`
-      );
+      if (onDeleteDuplicates) {
+        await onDeleteDuplicates(toDelete.map((r) => r.id));
+        setActionMessage(`Đã dọn trùng cho ${ma_tk}!`);
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
     } finally {
       setIsProcessing(false);
+      setTimeout(() => setActionMessage(null), 2500);
+    }
+  };
+
+  const handleCleanAllDuplicates = async () => {
+    if (!effectiveIsAdminOrStaff || duplicateGroups.length === 0) return;
+    if (
+      !window.confirm(
+        `Xác nhận dọn sạch trùng lặp hàng loạt cho ${duplicateGroups.length} nhóm trùng? Hệ thống luôn giữ lại bản ghi đầy đủ nhất.`
+      )
+    ) {
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const idsToDelete: string[] = [];
+      duplicateGroups.forEach((g) => {
+        g.records.slice(1).forEach((r) => idsToDelete.push(r.id));
+      });
+      if (onDeleteDuplicates) {
+        await onDeleteDuplicates(idsToDelete);
+        setActionMessage(`Đã dọn sạch trùng cho ${idsToDelete.length} bản ghi!`);
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => setActionMessage(null), 2500);
     }
   };
 
   return (
-    <div className="space-y-5">
-      {/* Header Banner */}
-      <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* 1. Header & Quick Stat cards */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-amber-400" />
-            <h2 className="text-base sm:text-lg font-bold text-slate-100">
-              Trung tâm Kiểm soát Chất lượng Dữ liệu Kho Chuẩn
+            {onBackToProperties && (
+              <button
+                onClick={onBackToProperties}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold"
+              >
+                ← Quay lại Kho
+              </button>
+            )}
+            <h2 className="text-xl font-extrabold text-slate-100 flex items-center gap-2 tracking-tight">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+              Báo cáo & Giám sát Chất lượng Dữ liệu
             </h2>
           </div>
           <p className="text-xs text-slate-400">
-            Rà soát trùng lặp Mã TK, chuẩn hóa mã kiểu cũ (#10, #11), bổ sung trường bắt buộc còn thiếu và kiểm tra đơn giá/m² bất thường.
+            Hệ thống tự động phát hiện mã TK lỗi, bản ghi thiếu trường bắt buộc, hoặc đơn giá bất thường.
           </p>
         </div>
 
         {actionMessage && (
-          <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2 shrink-0">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{actionMessage}</span>
+          <div className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs animate-bounce shadow-lg">
+            {actionMessage}
           </div>
         )}
       </div>
 
-      {/* 4 Sub-tab Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Quick stats panel */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           type="button"
-          onClick={() => setActiveSubTab("duplicate_matk")}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            activeSubTab === "duplicate_matk"
-              ? "bg-rose-950/40 border-rose-500/60 ring-2 ring-rose-500/20"
-              : "bg-slate-900/70 border-slate-800 hover:bg-slate-900"
+          onClick={() => setActiveSubTab("missing_matk")}
+          className={`p-4 rounded-2xl border text-left transition-all ${
+            activeSubTab === "missing_matk"
+              ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/15"
+              : "bg-slate-900 border-slate-800 hover:border-slate-700"
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-rose-400">
-            <span>1. Trùng Mã TK</span>
-            <Copy className="w-4 h-4" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-100 mt-2 font-mono">
-            {duplicateGroups.length}
-            <span className="text-xs font-normal text-slate-400 ml-1.5">
-              nhóm trùng
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Mã TK chưa chuẩn
             </span>
+            <Hash className="w-4 h-4 text-amber-500" />
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Cần gộp hoặc xóa bản trùng lặp
+          <div className="text-2xl font-extrabold text-amber-400 font-mono mt-1">
+            {legacyOrMissingMaTkList.length}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Mã trống hoặc dạng cũ (#12)
           </p>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveSubTab("missing_matk")}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            activeSubTab === "missing_matk"
-              ? "bg-amber-950/40 border-amber-500/60 ring-2 ring-amber-500/20"
-              : "bg-slate-900/70 border-slate-800 hover:bg-slate-900"
+          onClick={() => setActiveSubTab("duplicate_matk")}
+          className={`p-4 rounded-2xl border text-left transition-all ${
+            activeSubTab === "duplicate_matk"
+              ? "bg-rose-500/10 border-rose-500 ring-2 ring-rose-500/15"
+              : "bg-slate-900 border-slate-800 hover:border-slate-700"
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-amber-400">
-            <span>2. Chưa có ma_tk chuẩn</span>
-            <Hash className="w-4 h-4" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-100 mt-2 font-mono">
-            {legacyOrMissingMaTkList.length}
-            <span className="text-xs font-normal text-slate-400 ml-1.5">
-              bản ghi (#10, #11...)
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Mã TK trùng lặp
             </span>
+            <Copy className="w-4 h-4 text-rose-500" />
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Gán mã TK chuẩn duy nhất cho mọi dòng
+          <div className="text-2xl font-extrabold text-rose-400 font-mono mt-1">
+            {duplicateGroups.length}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Nhóm trùng lặp cần xóa bớt
           </p>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveSubTab("missing_fields")}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition-all ${
             activeSubTab === "missing_fields"
-              ? "bg-orange-950/40 border-orange-500/60 ring-2 ring-orange-500/20"
-              : "bg-slate-900/70 border-slate-800 hover:bg-slate-900"
+              ? "bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-500/15"
+              : "bg-slate-900 border-slate-800 hover:border-slate-700"
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-orange-400">
-            <span>3. Thiếu trường bắt buộc</span>
-            <AlertCircle className="w-4 h-4" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-100 mt-2 font-mono">
-            {items.filter((i) => i.missingFieldKeys.length > 0).length}
-            <span className="text-xs font-normal text-slate-400 ml-1.5">
-              / {items.length} tin
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Thiếu thông tin
             </span>
+            <AlertCircle className="w-4 h-4 text-cyan-500" />
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Chưa đủ 11/11 cột chuẩn v_nguon_xuat
+          <div className="text-2xl font-extrabold text-cyan-400 font-mono mt-1">
+            {dataItems.filter((i) => i.missingFieldKeys.length > 0).length}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Chưa đạt 11/11 trường bắt buộc
           </p>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveSubTab("abnormal_price")}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition-all ${
             activeSubTab === "abnormal_price"
-              ? "bg-cyan-950/40 border-cyan-500/60 ring-2 ring-cyan-500/20"
-              : "bg-slate-900/70 border-slate-800 hover:bg-slate-900"
+              ? "bg-violet-500/10 border-violet-500 ring-2 ring-violet-500/15"
+              : "bg-slate-900 border-slate-800 hover:border-slate-700"
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400">
-            <span>4. Giá/m² & DT bất thường</span>
-            <TrendingUp className="w-4 h-4" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-100 mt-2 font-mono">
-            {abnormalPriceOrAreaList.length}
-            <span className="text-xs font-normal text-slate-400 ml-1.5">
-              cảnh báo
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Bất thường khác
             </span>
+            <TrendingUp className="w-4 h-4 text-violet-500" />
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Đơn giá &lt;15tr, &gt;450tr/m² hoặc lệch R×D
+          <div className="text-2xl font-extrabold text-violet-400 font-mono mt-1">
+            {abnormalPriceOrAreaList.length}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Giá m² lạ hoặc lệch rộng×dài
           </p>
         </button>
       </div>
 
-      {/* SUB-TAB 1: TRÙNG MÃ TK */}
-      {activeSubTab === "duplicate_matk" && (
-        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-100">
-                Danh sách các nhóm trùng Mã TK ({duplicateGroups.length} nhóm)
-              </h3>
-              <p className="text-xs text-slate-400">
-                Hệ thống tự động xếp bản ghi có độ đầy đủ cao nhất lên đầu mỗi nhóm để giữ lại.
-              </p>
-            </div>
-            {isAdminOrStaff && duplicateGroups.length > 0 && (
-              <button
-                type="button"
-                onClick={handleRemoveAllDuplicates}
-                disabled={isProcessing}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                {isProcessing
-                  ? "Đang xử lý..."
-                  : "Xóa tất cả bản trùng (Giữ lại 1 bản đầy đủ nhất mỗi mã)"}
-              </button>
-            )}
-          </div>
-
-          {duplicateGroups.length === 0 ? (
-            <div className="p-10 text-center space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-              <p className="text-sm font-bold text-slate-200">
-                Không có Mã TK nào bị trùng lặp!
-              </p>
-              <p className="text-xs text-slate-400">
-                Toàn bộ các mã TK trong kho đều là duy nhất.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-800">
-              {duplicateGroups.map((grp) => (
-                <div key={grp.ma_tk} className="p-4 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-mono text-xs font-bold">
-                        {grp.ma_tk}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Xuất hiện {grp.records.length} lần
-                      </span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    {grp.records.map((rec, idx) => (
-                      <div
-                        key={rec.id}
-                        onClick={() => onSelectItem(rec)}
-                        className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer ${
-                          idx === 0
-                            ? "bg-emerald-950/20 border-emerald-500/40"
-                            : "bg-slate-950 border-slate-800 hover:border-slate-700"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                                idx === 0
-                                  ? "bg-emerald-500/20 text-emerald-300"
-                                  : "bg-rose-500/20 text-rose-300"
-                              }`}
-                            >
-                              {idx === 0 ? "Giữ lại (Đầy đủ nhất)" : "Bản trùng"}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-200 truncate">
-                              {[rec.so_nha, rec.duong, rec.phuong]
-                                .filter(Boolean)
-                                .join(", ") || rec.raw.name}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-3">
-                            <span>Độ đầy đủ: {rec.filledCount}/11</span>
-                            <span>Ảnh: {rec.imageCount}</span>
-                            <span>Giá: {rec.gia_text || "—"}</span>
-                          </div>
-                        </div>
-
-                        {idx > 0 && isAdminOrStaff && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteDuplicates([rec.id]);
-                            }}
-                            className="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold shrink-0 cursor-pointer"
-                          >
-                            Xóa bản này
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SUB-TAB 2: BẢN GHI KHÔNG CÓ MA_TK CHUẨN (KIỂU CŨ #10, #11) */}
+      {/* SUB-TAB 1: MÃ TK CHƯA CHUẨN */}
       {activeSubTab === "missing_matk" && (
         <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
             <div>
               <h3 className="text-sm font-bold text-slate-100">
-                Bản ghi chưa có `ma_tk` chuẩn hoặc đang dùng mã kiểu cũ (#10, #11) ({legacyOrMissingMaTkList.length} tin)
+                Danh sách Bản ghi có Mã TK chưa chuẩn ({legacyOrMissingMaTkList.length} tin)
               </h3>
               <p className="text-xs text-slate-400">
-                Mọi dòng xuất ra VIEW <code className="text-amber-300">v_nguon_xuat</code> đều bắt buộc có <code className="text-amber-300">ma_tk</code> chuẩn duy nhất.
+                Các bản ghi có Mã TK rỗng, sai định dạng hoặc Mã dạng cũ (VD: #12). Cần chuẩn hóa để hiển thị tốt trên Bản Đồ và xuất Hometea.
               </p>
             </div>
-            {isAdminOrStaff && legacyOrMissingMaTkList.length > 0 && (
+            {effectiveIsAdminOrStaff && legacyOrMissingMaTkList.length > 0 && (
               <button
                 type="button"
-                onClick={handleFixAllLegacyMaTk}
                 disabled={isProcessing}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                onClick={handleFixAllLegacyMaTk}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                {isProcessing
-                  ? "Đang gán mã..."
-                  : `Gán mã TK chuẩn cho tất cả (${legacyOrMissingMaTkList.length} tin)`}
+                Chuẩn hóa mã tự động ({legacyOrMissingMaTkList.length} dòng)
               </button>
             )}
           </div>
@@ -394,10 +350,7 @@ export default function DataQualityView({
             <div className="p-10 text-center space-y-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
               <p className="text-sm font-bold text-slate-200">
-                100% bản ghi đã có Mã TK chuẩn!
-              </p>
-              <p className="text-xs text-slate-400">
-                Không còn bản ghi nào dùng mã kiểu cũ (#10, #11) hoặc bỏ trống mã TK.
+                Tuyệt vời! 100% bản ghi đều đã có Mã TK chuẩn hóa đạt chuẩn.
               </p>
             </div>
           ) : (
@@ -405,12 +358,11 @@ export default function DataQualityView({
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-4">Mã hiện tại / Kiểu cũ</th>
-                    <th className="py-2.5 px-4">Mã TK chuẩn đề xuất</th>
-                    <th className="py-2.5 px-4">Tên gốc / Địa chỉ</th>
-                    <th className="py-2.5 px-4">Phường</th>
-                    <th className="py-2.5 px-4">Giá</th>
-                    <th className="py-2.5 px-4 text-right">Thao tác</th>
+                    <th className="py-2.5 px-4 w-32">Mã hiện tại</th>
+                    <th className="py-2.5 px-4 w-40">Mã AI đề xuất</th>
+                    <th className="py-2.5 px-4">Địa chỉ / Tên thô</th>
+                    <th className="py-2.5 px-4 w-28">Trạng thái xử lý</th>
+                    <th className="py-2.5 px-4 w-28 text-right">Hành động</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -420,45 +372,26 @@ export default function DataQualityView({
                       onClick={() => onSelectItem(it)}
                       className="hover:bg-slate-800/50 cursor-pointer"
                     >
-                      <td className="py-2.5 px-4 font-mono text-rose-400 font-semibold">
-                        {it.legacyToken || it.raw_ma_tk || "(Trống)"}
+                      <td className="py-2.5 px-4 font-mono text-rose-300">
+                        {it.ma_tk || <span className="italic text-slate-500">(Rỗng)</span>}
                       </td>
-                      <td className="py-2.5 px-4 font-mono font-bold text-amber-300">
+                      <td className="py-2.5 px-4 font-mono font-bold text-emerald-400">
                         {it.suggestedMaTk}
                       </td>
-                      <td className="py-2.5 px-4 text-slate-200 max-w-xs truncate">
-                        {[it.so_nha, it.duong].filter(Boolean).join(" ") ||
-                          it.raw.name}
+                      <td className="py-2.5 px-4 truncate max-w-xs text-slate-300">
+                        {it.dia_chi || it.raw.name}
                       </td>
-                      <td className="py-2.5 px-4 text-slate-300">
-                        {it.phuong || "—"}
+                      <td className="py-2.5 px-4 font-bold text-slate-400">
+                        {it.trang_thai_xu_ly}
                       </td>
-                      <td className="py-2.5 px-4 font-mono text-emerald-400">
-                        {it.gia_text || "—"}
-                      </td>
-                      <td
-                        className="py-2.5 px-4 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="inline-flex items-center gap-1.5">
-                          {isAdminOrStaff && (
-                            <button
-                              type="button"
-                              onClick={() => onAssignAllLegacyMaTk([it])}
-                              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-semibold cursor-pointer"
-                            >
-                              Gán {it.suggestedMaTk}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => onSelectItem(it)}
-                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
-                            title="Mở ngăn chỉnh sửa"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                      <td className="py-2.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onSelectItem(it)}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold cursor-pointer"
+                        >
+                          Duyệt sửa
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -469,37 +402,123 @@ export default function DataQualityView({
         </div>
       )}
 
-      {/* SUB-TAB 3: THIẾU TRƯỜNG BẮT BUỘC */}
+      {/* SUB-TAB 2: TRÙNG LẶP MÃ TK */}
+      {activeSubTab === "duplicate_matk" && (
+        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">
+                Phát hiện Mã TK bị trùng lặp ({duplicateGroups.length} nhóm trùng)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Các tin nhập trùng lặp nhau. Hệ thống xếp hạng bản ghi đầy đủ nhất để giữ lại, các bản ghi trống hơn đề xuất xóa bỏ để tránh nhiễu dữ liệu.
+              </p>
+            </div>
+            {effectiveIsAdminOrStaff && duplicateGroups.length > 0 && (
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleCleanAllDuplicates}
+                className="px-3 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Xóa trùng lặp hàng loạt ({duplicateGroups.length} nhóm)
+              </button>
+            )}
+          </div>
+
+          {duplicateGroups.length === 0 ? (
+            <div className="p-10 text-center space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+              <p className="text-sm font-bold text-slate-200">
+                Tuyệt vời! Không phát hiện Mã TK trùng lặp nào trong cơ sở dữ liệu.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {duplicateGroups.map((g) => (
+                <div key={g.ma_tk} className="p-4 sm:p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-sm font-bold text-amber-300">
+                      MÃ TRÙNG: {g.ma_tk} ({g.records.length} bản ghi)
+                    </span>
+                    {effectiveIsAdminOrStaff && (
+                      <button
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() =>
+                          handleResolveDuplicateGroup(g.ma_tk, g.records)
+                        }
+                        className="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold cursor-pointer"
+                      >
+                        Chỉ giữ lại bản tốt nhất & Xóa trùng
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {g.records.map((r, index) => (
+                      <div
+                        key={r.id}
+                        onClick={() => onSelectItem(r)}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                          index === 0
+                            ? "bg-slate-950/60 border-emerald-500/40 hover:bg-slate-950"
+                            : "bg-slate-950/20 border-slate-800/80 hover:bg-slate-800/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-slate-400 font-medium">
+                            Bản ghi {index === 0 ? "👑 Tốt nhất để GIỮ" : "❌ Đề xuất XÓA"}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-900 text-slate-300 text-[10px] font-mono">
+                            Đầy đủ: {r.filledCount}/11
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-200 truncate">
+                          ĐC: {[r.so_nha, r.duong, r.phuong].filter(Boolean).join(", ")}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                          Giá: {r.gia_text} · DT: {r.dien_tich_so || r.dien_tich_thuc_te || "?"}m²
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUB-TAB 3: THIẾU THÔNG TIN KHU CHUẨN */}
       {activeSubTab === "missing_fields" && (
         <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-slate-100">
-                  Bản ghi thiếu trường bắt buộc ({missingFieldsList.length} tin)
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Bấm vào bất kỳ dòng nào để mở ngăn chỉnh sửa bên phải (các ô còn thiếu được tô đỏ).
-                </p>
-              </div>
+          <div className="p-5 border-b border-slate-800 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">
+                Các bản ghi chưa đạt đầy đủ 11/11 trường dữ liệu bắt buộc ({missingFieldsList.length} tin)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Dữ liệu chưa hoàn chỉnh. Lọc theo từng loại trường thiếu để nhanh chóng rà soát bổ sung thông tin.
+              </p>
             </div>
 
-            {/* Filter by specific missing field */}
-            <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Thanh lọc theo từng trường còn thiếu */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
               <button
                 type="button"
                 onClick={() => setMissingFieldFilter("all")}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer border ${
                   missingFieldFilter === "all"
-                    ? "bg-amber-500 text-slate-950 border-amber-500"
+                    ? "bg-rose-500 text-white border-rose-500"
                     : "bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800"
                 }`}
               >
-                Tất cả trường thiếu (
-                {items.filter((i) => i.missingFieldKeys.length > 0).length})
+                Mọi trường ({dataItems.filter((i) => i.missingFieldKeys.length > 0).length})
               </button>
               {MANDATORY_WAREHOUSE_FIELDS.map((f) => {
-                const count = items.filter((i) =>
+                const count = dataItems.filter((i) =>
                   i.missingFieldKeys.includes(f.key)
                 ).length;
                 return (
@@ -605,12 +624,12 @@ export default function DataQualityView({
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="bg-slate-950/90 text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-4">Mã TK</th>
+                    <th className="py-2.5 px-4 w-32">Mã TK</th>
                     <th className="py-2.5 px-4">Địa chỉ</th>
-                    <th className="py-2.5 px-4">DT (Sổ / Thực tế)</th>
-                    <th className="py-2.5 px-4">Rộng × Dài</th>
-                    <th className="py-2.5 px-4">Giá & Đơn giá/m²</th>
-                    <th className="py-2.5 px-4">Lý do cảnh báo</th>
+                    <th className="py-2.5 px-4 w-28">Giá chào</th>
+                    <th className="py-2.5 px-4 w-36">Đơn giá / m²</th>
+                    <th className="py-2.5 px-4">Lý do bất thường / Cảnh báo</th>
+                    <th className="py-2.5 px-4 w-28 text-right">Sửa nhanh</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -623,39 +642,31 @@ export default function DataQualityView({
                       <td className="py-2.5 px-4 font-mono font-bold text-amber-300">
                         {it.ma_tk || it.suggestedMaTk}
                       </td>
-                      <td className="py-2.5 px-4 text-slate-200 max-w-xs truncate">
-                        {[it.so_nha, it.duong, it.phuong]
-                          .filter(Boolean)
-                          .join(", ") || it.raw.name}
+                      <td className="py-2.5 px-4 text-slate-300 truncate max-w-xs">
+                        {[it.so_nha, it.duong, it.phuong].filter(Boolean).join(", ")}
                       </td>
-                      <td className="py-2.5 px-4 font-mono text-slate-300">
-                        Sổ: {it.dien_tich_so ?? "—"}m² / TT:{" "}
-                        {it.dien_tich_thuc_te ?? "—"}m²
+                      <td className="py-2.5 px-4 font-mono text-slate-200">
+                        {it.gia_text}
                       </td>
-                      <td className="py-2.5 px-4 font-mono text-slate-300">
-                        {it.rong || "?"} × {it.dai || "?"}
+                      <td className="py-2.5 px-4 font-mono text-slate-200">
+                        {it.pricePerM2Text || "—"}
                       </td>
-                      <td className="py-2.5 px-4 font-mono">
-                        <div className="text-emerald-400 font-bold">
-                          {it.gia_text || "—"}
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {it.pricePerM2Text || "—"}
-                        </div>
+                      <td className="py-2.5 px-4 text-rose-300 text-xs font-medium">
+                        {it.isAbnormalPricePerM2 && (
+                          <div className="text-rose-400">⚠️ {it.abnormalPriceReason}</div>
+                        )}
+                        {(it.needsAreaReview || it.needsAreaLightCheck) && (
+                          <div className="text-amber-400">⚠️ {it.areaReviewReason}</div>
+                        )}
                       </td>
-                      <td className="py-2.5 px-4">
-                        <div className="space-y-1">
-                          {it.isAbnormalPricePerM2 && (
-                            <div className="px-2 py-0.5 rounded bg-rose-500/15 border border-rose-500/35 text-rose-300 text-[11px] font-semibold inline-block mr-1">
-                              {it.abnormalPriceReason}
-                            </div>
-                          )}
-                          {(it.needsAreaReview || it.needsAreaLightCheck) && (
-                            <div className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[11px] font-semibold inline-block">
-                              {it.areaReviewReason}
-                            </div>
-                          )}
-                        </div>
+                      <td className="py-2.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onSelectItem(it)}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold cursor-pointer"
+                        >
+                          Duyệt
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -5,12 +5,16 @@ import { AuthUser } from "../types";
 import { safeFetchJson } from "../utils/apiClient";
 
 interface LoginScreenProps {
-  onLoginSuccess: (user?: AuthUser) => void;
-  theme: "light" | "dark";
-  toggleTheme: () => void;
+  onLoginSuccess: (user?: AuthUser, token?: string) => void;
+  theme?: "light" | "dark";
+  toggleTheme?: () => void;
 }
 
-export default function LoginScreen({ onLoginSuccess, theme, toggleTheme }: LoginScreenProps) {
+export default function LoginScreen({ 
+  onLoginSuccess, 
+  theme = "dark", 
+  toggleTheme = () => {} 
+}: LoginScreenProps) {
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -59,7 +63,7 @@ export default function LoginScreen({ onLoginSuccess, theme, toggleTheme }: Logi
         if (res.data.token) {
           localStorage.setItem("admin_token", res.data.token);
         }
-        onLoginSuccess(res.data.user);
+        onLoginSuccess(res.data.user, res.data.token);
       } else {
         setError(
           res.errorMessage ||

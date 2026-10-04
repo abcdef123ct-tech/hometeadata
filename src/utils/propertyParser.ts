@@ -33,8 +33,9 @@ export interface ParsedPropertyData {
 }
 
 export function parsePropertyData(prop: Property): ParsedPropertyData {
-  const content = prop.content || "";
-  const rawName = (prop.name || "").trim();
+  const safeProp = prop || ({} as Property);
+  const content = safeProp.content || "";
+  const rawName = (safeProp.name || "").trim();
 
   // 1. Check if rawName is a Person Name or a Property Title/Address
   // A property title typically has numbers, "đường", "hẻm", "thửa", "nhà", "kdc", "TK", etc.

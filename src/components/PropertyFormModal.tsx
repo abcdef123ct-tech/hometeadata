@@ -84,9 +84,10 @@ interface PropertyFormModalProps {
   property?: Property | null; // null if adding new
   isOpen: boolean;
   onClose: () => void;
-  onSave: (propertyData: Property) => Promise<{ success: boolean; error?: string }>;
-  cloudinaryConfig: { cloudName: string; uploadPreset: string };
+  onSave: any;
+  cloudinaryConfig?: { cloudName: string; uploadPreset: string };
   currentUser?: AuthUser | null;
+  editingProperty?: Property | null; // fallback
 }
 
 export default function PropertyFormModal({ property, isOpen, onClose, onSave, cloudinaryConfig, currentUser }: PropertyFormModalProps) {

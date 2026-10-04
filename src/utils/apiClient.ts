@@ -6,6 +6,7 @@ export interface ApiCallResult<T = any> {
   contentType: string;
   data: T;
   errorMessage?: string;
+  error?: string;
 }
 
 /**
@@ -38,6 +39,7 @@ export async function readJsonResponseSafe<T = any>(
       contentType,
       data: {} as T,
       errorMessage,
+      error: errorMessage,
     };
   }
 
@@ -54,6 +56,7 @@ export async function readJsonResponseSafe<T = any>(
       contentType,
       data: {} as T,
       errorMessage,
+      error: errorMessage,
     };
   }
 
@@ -71,6 +74,7 @@ export async function readJsonResponseSafe<T = any>(
       contentType,
       data: parsedData as T,
       errorMessage,
+      error: serverReason || errorMessage,
     };
   }
 

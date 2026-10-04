@@ -1,28 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
-  Save,
   AlertCircle,
-  CheckCircle2,
-  Lock,
-  MapPin,
-  Ruler,
-  DollarSign,
-  Image as ImageIcon,
-  FileText,
-  Send,
-  Share2,
-  Code2,
+  ChevronLeft,
+  ChevronRight,
   Trash2,
-  Plus,
-  ExternalLink,
-  Copy,
-  Check,
+  Eye,
   Sparkles,
+  MoreVertical,
 } from "lucide-react";
 import {
   Property,
-  BusinessStatusType,
   ProcessingStatusType,
   DISTRICT_OPTIONS,
   AuthUser,
@@ -32,21 +20,10 @@ import {
 } from "../types";
 import {
   NormalizedWarehouseProperty,
-  BUSINESS_STATUS_META,
-  PROCESSING_STATUS_META,
-  toVNguonXuatRow,
-  isStandardMaTk,
   LOAI_VI_TRI_OPTIONS,
   HUONG_OPTIONS,
   PHAP_LY_PRESETS,
-  sanitizeTenDuong,
-  sanitizeSoNha,
 } from "../utils/dataWarehouseUtils";
-import {
-  parseAreaNumbers,
-  parsePriceToVnd,
-  formatVndToReadable,
-} from "../utils/bulkFolderParser";
 import SmartImage from "./SmartImage";
 
 interface WarehouseEditDrawerProps {
@@ -55,12 +32,9 @@ interface WarehouseEditDrawerProps {
   onClose: () => void;
   onSave: (id: string, updates: Partial<Property>) => Promise<void>;
   onDelete?: (prop: Property) => void;
-  onExportSingle?: (
-    item: NormalizedWarehouseProperty,
-    target: "hometea" | "post_writer"
-  ) => Promise<void>;
-  onRunAiSingle?: (item: NormalizedWarehouseProperty) => Promise<void>;
   currentUser?: AuthUser | null;
+  allItems?: NormalizedWarehouseProperty[];
+  onSelectProperty?: (id: string) => void;
 }
 
 export default function WarehouseEditDrawer({
@@ -69,10 +43,11 @@ export default function WarehouseEditDrawer({
   onClose,
   onSave,
   onDelete,
-  onExportSingle,
-  onRunAiSingle,
   currentUser,
+  allItems = [],
+  onSelectProperty,
 }: WarehouseEditDrawerProps) {
+  // Form states
   const [maTk, setMaTk] = useState("");
   const [soNha, setSoNha] = useState("");
   const [duong, setDuong] = useState("");
@@ -85,9 +60,7 @@ export default function WarehouseEditDrawer({
   const [giaInput, setGiaInput] = useState("");
   const [giaVnd, setGiaVnd] = useState<number | null>(null);
   const [loaiHinh, setLoaiHinh] = useState("Nhà phố");
-  const [toaDo, setToaDo] = useState("");
 
-  // Các trường Bóc tách bằng AI (NULL nếu không có trong văn bản)
   const [loaiViTri, setLoaiViTri] = useState<LoaiViTriType | "">("");
   const [huong, setHuong] = useState<string>("");
   const [phapLy, setPhapLy] = useState<string>("");
@@ -98,33 +71,24 @@ export default function WarehouseEditDrawer({
   const [hienTrang, setHienTrang] = useState<string>("");
   const [nguonTrichXuat, setNguonTrichXuat] = useState<NguonTrichXuatMap>({});
   const [aiManualFields, setAiManualFields] = useState<AiExtractedFieldKey[]>([]);
-  const [daBocTachAi, setDaBocTachAi] = useState(false);
-  const [daXacNhanAi, setDaXacNhanAi] = useState(false);
-  const [isRunningAiSingle, setIsRunningAiSingle] = useState(false);
 
-  const [trangThaiKinhDoanh, setTrangThaiKinhDoanh] =
-    useState<BusinessStatusType>("nguon_tho");
-  const [trangThaiXuLy, setTrangThaiXuLy] =
-    useState<ProcessingStatusType>("tho");
-  const [daXuatHometea, setDaXuatHometea] = useState(false);
-  const [daXuatFb, setDaXuatFb] = useState(false);
+  const [trangThaiXuLy, setTrangThaiXuLy] = useState<ProcessingStatusType>("tho");
+  const [hometeaTrangThai, setHometeaTrangThai] = useState<string>("chua_dang");
+  const [hometeaId, setHometeaId] = useState<string | null>(null);
 
-  // Phần Nội bộ (KHÔNG xuất ra v_nguon_xuat)
-  const [moiGioiNguon, setMoiGioiNguon] = useState("");
-  const [sdtNguon, setSdtNguon] = useState("");
-  const [hoaHong, setHoaHong] = useState("");
+  // Nội bộ
   const [moTaTho, setMoTaTho] = useState("");
-
-  // Ảnh
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [newImageUrl, setNewImageUrl] = useState("");
 
+  const [showRawName, setShowRawName] = useState(false);
+  const [showSummarySection, setShowSummarySection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [showViewPreview, setShowViewPreview] = useState(false);
-  const [copiedJson, setCopiedJson] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInputCode, setDeleteInputCode] = useState("");
 
+  const originalContentRef = useRef<HTMLDivElement>(null);
   const isViewer = currentUser?.role === "viewer";
 
   useEffect(() => {
@@ -133,1510 +97,716 @@ export default function WarehouseEditDrawer({
     setSoNha(item.so_nha || "");
     setDuong(item.ten_duong || item.duong || "");
     setPhuong(item.phuong || "");
-    setDienTichSo(
-      item.dien_tich_so !== null && item.dien_tich_so !== undefined
-        ? String(item.dien_tich_so)
-        : ""
-    );
-    setDienTichThucTe(
-      item.dien_tich_thuc_te !== null && item.dien_tich_thuc_te !== undefined
-        ? String(item.dien_tich_thuc_te)
-        : ""
-    );
+    setDienTichSo(item.dien_tich_so !== null && item.dien_tich_so !== undefined ? String(item.dien_tich_so) : "");
+    setDienTichThucTe(item.dien_tich_thuc_te !== null && item.dien_tich_thuc_te !== undefined ? String(item.dien_tich_thuc_te) : "");
     setSoTang(item.so_tang || "");
     setRong(item.rong || "");
     setDai(item.dai || "");
     setGiaVnd(item.gia);
     setGiaInput(
       item.gia && item.gia > 0
-        ? formatVndToReadable(item.gia) || String(item.gia)
+        ? `${item.gia / 1e9} tỷ`
         : ""
     );
     setLoaiHinh(item.loai_hinh || "Nhà phố");
-    setToaDo(item.toa_do || "");
     setLoaiViTri(item.loai_vi_tri || "");
     setHuong(item.huong || "");
     setPhapLy(item.phap_ly || "");
-    setSoPhongNgu(
-      item.so_phong_ngu !== null && item.so_phong_ngu !== undefined
-        ? String(item.so_phong_ngu)
-        : ""
-    );
-    setSoWc(
-      item.so_wc !== null && item.so_wc !== undefined ? String(item.so_wc) : ""
-    );
-    setDuongVaoM(
-      item.duong_vao_m !== null && item.duong_vao_m !== undefined
-        ? String(item.duong_vao_m)
-        : ""
-    );
-    setDacDiemInput(
-      Array.isArray(item.dac_diem) && item.dac_diem.length > 0
-        ? item.dac_diem.join(", ")
-        : ""
-    );
+    setSoPhongNgu(item.so_phong_ngu !== null && item.so_phong_ngu !== undefined ? String(item.so_phong_ngu) : "");
+    setSoWc(item.so_wc !== null && item.so_wc !== undefined ? String(item.so_wc) : "");
+    setDuongVaoM(item.duong_vao_m !== null && item.duong_vao_m !== undefined ? String(item.duong_vao_m) : "");
+    setDacDiemInput(Array.isArray(item.dac_diem) ? item.dac_diem.join(", ") : "");
     setHienTrang(item.hien_trang || "");
     setNguonTrichXuat(item.nguon_trich_xuat || {});
     setAiManualFields(item.ai_manual_fields || []);
-    setDaBocTachAi(item.da_boc_tach_ai);
-    setDaXacNhanAi(item.da_xac_nhan_ai);
-    setTrangThaiKinhDoanh(item.trang_thai_kinh_doanh);
-    setTrangThaiXuLy(item.trang_thai_xu_ly);
-    setDaXuatHometea(item.da_xuat_hometea);
-    setDaXuatFb(item.da_xuat_fb);
-    setMoiGioiNguon(item.moi_gioi_nguon || "");
-    setSdtNguon(item.sdt_nguon || "");
-    setHoaHong(item.hoa_hong || "");
-    setMoTaTho(item.mo_ta_tho || "");
+    setTrangThaiXuLy(item.trang_thai_xu_ly || "tho");
+    setHometeaTrangThai(item.hometea_trang_thai || "chua_dang");
+    setHometeaId(item.hometea_id || null);
+    setMoTaTho(item.mo_ta_tho || item.raw?.content || "");
     setImageUrls(item.imageUrls || []);
-    setSaveMessage(null);
-    setSaveError(null);
+    setShowMoreMenu(false);
+    setShowDeleteConfirm(false);
+    setDeleteInputCode("");
   }, [item]);
+
+  // Navigation index in allItems queue
+  const currentIndex = useMemo(() => {
+    if (!item || !allItems.length) return -1;
+    return allItems.findIndex((x) => x.id === item.id);
+  }, [item, allItems]);
+
+  const handlePrev = () => {
+    if (currentIndex > 0 && onSelectProperty) {
+      onSelectProperty(allItems[currentIndex - 1].id);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex >= 0 && currentIndex < allItems.length - 1 && onSelectProperty) {
+      onSelectProperty(allItems[currentIndex + 1].id);
+    }
+  };
+
+  // Keyboard shortcuts: J/K = next/prev, Ctrl+Enter = Save & Ready
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const isInput = targetTag === "input" || targetTag === "textarea" || targetTag === "select";
+
+      if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        handleSaveAndReady();
+        return;
+      }
+
+      if (!isInput) {
+        if (e.key === "j" || e.key === "J") {
+          e.preventDefault();
+          handleNext();
+        } else if (e.key === "k" || e.key === "K") {
+          e.preventDefault();
+          handlePrev();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, currentIndex, allItems, maTk, soNha, duong, phuong, giaVnd, loaiViTri, phapLy, trangThaiXuLy]);
 
   if (!isOpen || !item) return null;
 
-  const markAiFieldManual = (key: AiExtractedFieldKey, newVal: any) => {
-    setAiManualFields((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    setNguonTrichXuat((prev) => ({
-      ...prev,
-      [key]: {
-        gia_tri: newVal,
-        bang_chung: prev[key]?.bang_chung || "Đã chỉnh sửa / xác nhận thủ công",
-        tin_cay: "cao",
-        da_sua_tay: true,
-        da_xac_nhan: true,
-      },
-    }));
+  // Mask phone numbers and names in raw text
+  const maskText = (txt: string) => {
+    if (!txt) return "";
+    let res = txt.replace(/0\d{9,10}/g, "***-***-****");
+    res = res.replace(/(0\d{2,3})[\s.-]?\d{3}[\s.-]?\d{3,4}/g, "***-***-****");
+    res = res.replace(/(chính chủ|anh|chị|cô|chú|bác|mg|môi giới)\s+[a-zA-ZÀ-ỹ]+/gi, "$1 ***");
+    return res;
   };
 
-  const confirmSingleAiField = (key: AiExtractedFieldKey, currentVal: any) => {
-    setNguonTrichXuat((prev) => ({
-      ...prev,
-      [key]: {
-        gia_tri: currentVal,
-        bang_chung: prev[key]?.bang_chung || "Đã xác nhận thủ công",
-        tin_cay: "cao",
-        da_sua_tay: prev[key]?.da_sua_tay || false,
-        da_xac_nhan: true,
-      },
-    }));
-  };
+  const cleanAddress = item.cleanAddress || item.dia_chi || item.raw?.dia_chi || item.raw?.name || [item.so_nha, item.duong || item.ten_duong, item.phuong].filter(Boolean).join(", ") || item.ma_tk || "Bất động sản";
+  const rawTitle = item.raw?.name || item.name || item.ma_tk || "Chưa có tên thô";
 
-  const doesAiFieldNeedConfirm = (key: AiExtractedFieldKey, currentVal: any): boolean => {
-    if (daXacNhanAi) return false;
-    if (aiManualFields.includes(key)) return false;
+  // Helper check field status (gray = auto/ok, yellow = needs confirm, green = confirmed)
+  const getFieldStatusColor = (key: AiExtractedFieldKey, val: any) => {
+    if (aiManualFields.includes(key)) return "border-emerald-500/50 bg-emerald-950/20 text-emerald-300";
     const ev = nguonTrichXuat[key];
-    if (ev?.da_sua_tay || ev?.da_xac_nhan) return false;
-    const isEmpty =
-      currentVal === null ||
-      currentVal === undefined ||
-      currentVal === "" ||
-      (Array.isArray(currentVal) && currentVal.length === 0);
-    if (isEmpty || !ev || ev.tin_cay === "thap") return true;
-    return false;
+    if (ev?.da_xac_nhan || ev?.da_sua_tay) return "border-emerald-500/50 bg-emerald-950/20 text-emerald-300";
+    if (val === null || val === undefined || val === "" || ev?.tin_cay === "thap") {
+      return "border-amber-500/80 bg-amber-950/30 text-amber-200";
+    }
+    return "border-slate-700 bg-slate-900/60 text-slate-200";
   };
 
-  const handlePriceInputChange = (val: string) => {
-    setGiaInput(val);
-    const trimmed = val.trim();
-    if (!trimmed) {
-      setGiaVnd(null);
-      return;
-    }
-    if (/^[0-9]{7,15}$/.test(trimmed.replace(/[.,\s]/g, ""))) {
-      const rawNum = Number(trimmed.replace(/[.,\s]/g, ""));
-      if (!isNaN(rawNum) && rawNum > 0) {
-        setGiaVnd(rawNum);
-        return;
-      }
-    }
-    const parsed = parsePriceToVnd(trimmed);
-    if (parsed.vnd && parsed.vnd > 0) {
-      setGiaVnd(parsed.vnd);
-    } else {
-      const floatVal = parseFloat(trimmed.replace(",", "."));
-      if (!isNaN(floatVal) && floatVal > 0) {
-        setGiaVnd(
-          floatVal < 1000
-            ? Math.round(floatVal * 1_000_000_000)
-            : Math.round(floatVal)
-        );
+  const getEvidence = (key: AiExtractedFieldKey) => {
+    return nguonTrichXuat[key]?.bang_chung || "Không có bằng chứng trích xuất trực tiếp.";
+  };
+
+  const scrollToEvidence = (key: string) => {
+    if (originalContentRef.current) {
+      const el = originalContentRef.current.querySelector(`[data-evidence-key="${key}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("bg-amber-500/30", "ring-2", "ring-amber-400");
+        setTimeout(() => {
+          el.classList.remove("bg-amber-500/30", "ring-2", "ring-amber-400");
+        }, 2000);
       }
     }
   };
 
-  // Kiểm tra các ô bắt buộc còn thiếu để tô đỏ trực tiếp
-  const isMaTkMissing = !isStandardMaTk(maTk);
-  const isSoNhaMissing = !soNha.trim();
-  const isDuongMissing = !duong.trim();
-  const isPhuongMissing = !phuong.trim();
-  const numDtSo =
-    dienTichSo.trim() !== "" && !isNaN(Number(dienTichSo))
-      ? Number(dienTichSo)
-      : null;
-  const numDtThucTe =
-    dienTichThucTe.trim() !== "" && !isNaN(Number(dienTichThucTe))
-      ? Number(dienTichThucTe)
-      : null;
-  const isDtSoMissing = numDtSo === null || numDtSo <= 0;
-  const isDtThucTeMissing = numDtThucTe === null || numDtThucTe <= 0;
-  const isSoTangMissing = !soTang.trim();
-  const isRongMissing = !rong.trim();
-  const isDaiMissing = !dai.trim();
-  const isGiaMissing = !giaVnd || giaVnd <= 0;
-  const isAnhMissing = imageUrls.length === 0;
-
-  const currentMissingLabels: string[] = [];
-  if (isMaTkMissing) currentMissingLabels.push("Mã TK");
-  if (isSoNhaMissing) currentMissingLabels.push("Số nhà");
-  if (isDuongMissing) currentMissingLabels.push("Đường");
-  if (isPhuongMissing) currentMissingLabels.push("Phường");
-  if (isDtSoMissing) currentMissingLabels.push("DT sổ");
-  if (isDtThucTeMissing) currentMissingLabels.push("DT thực tế");
-  if (isSoTangMissing) currentMissingLabels.push("Số tầng");
-  if (isRongMissing) currentMissingLabels.push("Rộng");
-  if (isDaiMissing) currentMissingLabels.push("Dài");
-  if (isGiaMissing) currentMissingLabels.push("Giá");
-  if (isAnhMissing) currentMissingLabels.push("Ảnh");
-
-  const filledNow = 11 - currentMissingLabels.length;
-
-  const fieldInputClass = (isMissing: boolean) =>
-    `w-full px-3 py-2 rounded-lg text-xs font-medium transition-all outline-none border ${
-      isMissing
-        ? "border-rose-500/80 bg-rose-950/30 text-rose-100 placeholder-rose-400/60 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/25"
-        : "border-slate-700/80 bg-slate-900/90 text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
-    }`;
-
-  const handleSaveChanges = async (
-    e?: React.FormEvent,
-    overrideConfirmReady = false
-  ) => {
-    if (e) e.preventDefault();
+  const handleSaveOnly = async () => {
     if (isViewer) return;
     setIsSaving(true);
-    setSaveError(null);
-    setSaveMessage(null);
-
     try {
-      const cleanMaTk = maTk.trim().toUpperCase();
-      const cleanSoNha = sanitizeSoNha(soNha) || soNha.trim();
-      const cleanTenDuong = sanitizeTenDuong(duong) || duong.trim();
-
-      const combinedDienTich =
-        numDtSo !== null && numDtThucTe !== null
-          ? numDtSo === numDtThucTe
-            ? `${numDtThucTe}`
-            : `${numDtSo}/${numDtThucTe}`
-          : numDtThucTe !== null
-          ? `${numDtThucTe}`
-          : numDtSo !== null
-          ? `${numDtSo}`
-          : "";
-
-      const displayTitle = [
-        cleanMaTk ? `${cleanMaTk}_` : "",
-        [cleanSoNha, cleanTenDuong].filter(Boolean).join(" "),
-        combinedDienTich,
-        soTang.trim(),
-        rong.trim(),
-        dai.trim(),
-        formatVndToReadable(giaVnd),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .replace("_ ", "_");
-
-      const anhPayload = imageUrls.map((url, idx) => ({
-        url,
-        is_avatar: idx === 0,
-        is_hidden: false,
-      }));
-
-      const parsedPn =
-        soPhongNgu.trim() !== "" &&
-        !isNaN(Number(soPhongNgu)) &&
-        Number(soPhongNgu) > 0
-          ? Math.round(Number(soPhongNgu))
-          : null;
-      const parsedWc =
-        soWc.trim() !== "" && !isNaN(Number(soWc)) && Number(soWc) > 0
-          ? Math.round(Number(soWc))
-          : null;
-      const parsedDuongVao =
-        duongVaoM.trim() !== "" &&
-        !isNaN(Number(duongVaoM)) &&
-        Number(duongVaoM) > 0
-          ? Number(duongVaoM)
-          : null;
-      const parsedDacDiem = dacDiemInput.trim()
-        ? dacDiemInput
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : null;
-
-      const finalConfirmed = overrideConfirmReady ? true : daXacNhanAi;
-      const finalXuLy: ProcessingStatusType = overrideConfirmReady
-        ? "san_sang"
-        : trangThaiXuLy;
-
-      const updates: Partial<Property> = {
-        name: displayTitle || item.raw.name,
-        phone: sdtNguon.trim(),
-        district: phuong.trim(),
-        ma_tk: cleanMaTk,
-        so_nha: cleanSoNha || null,
-        ten_duong: cleanTenDuong || null,
-        duong: cleanTenDuong,
-        phuong: phuong.trim(),
-        dien_tich: combinedDienTich,
-        dien_tich_so: numDtSo,
-        dien_tich_thuc_te: numDtThucTe,
-        so_tang: soTang.trim(),
-        rong: rong.trim(),
-        dai: dai.trim(),
+      await onSave(item.id, {
+        ma_tk: maTk,
+        so_nha: soNha,
+        ten_duong: duong,
+        phuong: phuong,
+        dien_tich_so: dienTichSo ? Number(dienTichSo) : null,
+        dien_tich_thuc_te: dienTichThucTe ? Number(dienTichThucTe) : null,
+        so_tang: soTang || null,
+        rong: rong || null,
+        dai: dai || null,
         gia: giaVnd,
-        loai_hinh: loaiHinh.trim(),
-        toa_do: toaDo.trim(),
-        loai_vi_tri: loaiViTri ? (loaiViTri as LoaiViTriType) : null,
-        huong: huong.trim() ? huong.trim() : null,
-        phap_ly: phapLy.trim() ? phapLy.trim() : null,
-        so_phong_ngu: parsedPn,
-        so_wc: parsedWc,
-        duong_vao_m: parsedDuongVao,
-        dac_diem: parsedDacDiem,
-        hien_trang: hienTrang.trim() ? hienTrang.trim() : null,
+        loai_hinh: loaiHinh,
+        loai_vi_tri: loaiViTri || null,
+        huong: huong || null,
+        phap_ly: phapLy || null,
+        so_phong_ngu: soPhongNgu ? Number(soPhongNgu) : null,
+        so_wc: soWc ? Number(soWc) : null,
+        duong_vao_m: duongVaoM ? Number(duongVaoM) : null,
+        dac_diem: dacDiemInput ? dacDiemInput.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        hien_trang: hienTrang || null,
         nguon_trich_xuat: nguonTrichXuat,
         ai_manual_fields: aiManualFields,
-        da_boc_tach_ai: daBocTachAi || Object.keys(nguonTrichXuat).length > 0,
-        da_xac_nhan_ai: finalConfirmed,
-        website_link: toaDo.trim().startsWith("http")
-          ? toaDo.trim()
-          : item.raw.website_link,
-        trang_thai_kinh_doanh: trangThaiKinhDoanh,
-        trang_thai_xu_ly: finalXuLy,
-        da_xuat_hometea:
-          daXuatHometea || finalXuLy === "da_len_hometea",
-        da_xuat_fb: daXuatFb || finalXuLy === "da_dang_fb",
-        moi_gioi_nguon: moiGioiNguon.trim(),
-        sdt_nguon: sdtNguon.trim(),
-        hoa_hong: hoaHong.trim(),
-        mo_ta_tho: moTaTho,
-        image_urls: imageUrls,
-        anh: anhPayload,
-      };
-
-      if (overrideConfirmReady) {
-        setDaXacNhanAi(true);
-        setTrangThaiXuLy("san_sang");
-      }
-
-      await onSave(item.id, updates);
-      setSaveMessage(
-        overrideConfirmReady
-          ? "Đã xác nhận bóc tách AI & chuyển sang Sẵn sàng!"
-          : "Đã lưu chuẩn hóa bản ghi thành công!"
-      );
-      setTimeout(() => setSaveMessage(null), 2800);
+        trang_thai_xu_ly: trangThaiXuLy,
+        da_xac_nhan_ai: true,
+      });
+      setSaveMessage("Đã lưu thành công!");
+      setTimeout(() => setSaveMessage(null), 2500);
     } catch (err: any) {
-      setSaveError(err.message || "Lỗi khi lưu bản ghi.");
+      alert("Lỗi khi lưu: " + (err?.message || err));
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleAddImage = () => {
-    const trimmed = newImageUrl.trim();
-    if (!trimmed) return;
-    if (!imageUrls.includes(trimmed)) {
-      setImageUrls((prev) => [...prev, trimmed]);
+  const handleSaveAndReady = async () => {
+    if (isViewer) return;
+    setIsSaving(true);
+    try {
+      setTrangThaiXuLy("san_sang");
+      await onSave(item.id, {
+        ma_tk: maTk,
+        so_nha: soNha,
+        ten_duong: duong,
+        phuong: phuong,
+        dien_tich_so: dienTichSo ? Number(dienTichSo) : null,
+        dien_tich_thuc_te: dienTichThucTe ? Number(dienTichThucTe) : null,
+        so_tang: soTang || null,
+        rong: rong || null,
+        dai: dai || null,
+        gia: giaVnd,
+        loai_hinh: loaiHinh,
+        loai_vi_tri: loaiViTri || null,
+        huong: huong || null,
+        phap_ly: phapLy || null,
+        so_phong_ngu: soPhongNgu ? Number(soPhongNgu) : null,
+        so_wc: soWc ? Number(soWc) : null,
+        duong_vao_m: duongVaoM ? Number(duongVaoM) : null,
+        dac_diem: dacDiemInput ? dacDiemInput.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        hien_trang: hienTrang || null,
+        nguon_trich_xuat: nguonTrichXuat,
+        ai_manual_fields: aiManualFields,
+        trang_thai_xu_ly: "san_sang",
+        da_xac_nhan_ai: true,
+      });
+      if (currentIndex >= 0 && currentIndex < allItems.length - 1 && onSelectProperty) {
+        onSelectProperty(allItems[currentIndex + 1].id);
+      } else {
+        setSaveMessage("Đã lưu & chuyển sẵn sàng!");
+        setTimeout(() => setSaveMessage(null), 2500);
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + (err?.message || err));
+    } finally {
+      setIsSaving(false);
     }
-    setNewImageUrl("");
-  };
-
-  const handleRemoveImage = (idx: number) => {
-    setImageUrls((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleSetPrimaryImage = (idx: number) => {
-    if (idx === 0) return;
-    setImageUrls((prev) => {
-      const copy = [...prev];
-      const [chosen] = copy.splice(idx, 1);
-      return [chosen, ...copy];
-    });
-  };
-
-  const vNguonXuatPreview = toVNguonXuatRow({
-    ...item,
-    ma_tk: maTk.trim().toUpperCase() || item.suggestedMaTk,
-    isLegacyOrMissingMaTk: !isStandardMaTk(maTk),
-    so_nha: soNha.trim(),
-    ten_duong: sanitizeTenDuong(duong) || duong.trim(),
-    duong: sanitizeTenDuong(duong) || duong.trim(),
-    phuong: phuong.trim(),
-    dien_tich_so: numDtSo,
-    dien_tich_thuc_te: numDtThucTe,
-    so_tang: soTang.trim(),
-    rong: rong.trim(),
-    dai: dai.trim(),
-    gia: giaVnd,
-    loai_vi_tri: loaiViTri ? (loaiViTri as LoaiViTriType) : null,
-    huong: huong.trim() || null,
-    phap_ly: phapLy.trim() || null,
-    so_phong_ngu:
-      soPhongNgu.trim() && !isNaN(Number(soPhongNgu)) && Number(soPhongNgu) > 0
-        ? Math.round(Number(soPhongNgu))
-        : null,
-    so_wc:
-      soWc.trim() && !isNaN(Number(soWc)) && Number(soWc) > 0
-        ? Math.round(Number(soWc))
-        : null,
-    duong_vao_m:
-      duongVaoM.trim() && !isNaN(Number(duongVaoM)) && Number(duongVaoM) > 0
-        ? Number(duongVaoM)
-        : null,
-    dac_diem: dacDiemInput.trim()
-      ? dacDiemInput
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : null,
-    hien_trang: hienTrang.trim() || null,
-    anhArray: imageUrls.map((url, idx) => ({
-      url,
-      is_avatar: idx === 0,
-      is_hidden: false,
-    })),
-    trang_thai_xu_ly: trangThaiXuLy,
-  });
-
-  const renderAiFieldStatusBadge = (key: AiExtractedFieldKey, currentVal: any) => {
-    const ev = nguonTrichXuat[key];
-    const isManual = aiManualFields.includes(key) || ev?.da_sua_tay;
-    if (isManual) {
-      return (
-        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-semibold">
-          Đã sửa tay (Giữ nguyên khi chạy lại AI)
-        </span>
-      );
-    }
-    if (daXacNhanAi || ev?.da_xac_nhan) {
-      return (
-        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
-          Đã xác nhận
-        </span>
-      );
-    }
-    const needsConfirm = doesAiFieldNeedConfirm(key, currentVal);
-    if (needsConfirm) {
-      return (
-        <div className="flex items-center gap-1">
-          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
-            Cần xác nhận
-          </span>
-          {!isViewer && (
-            <button
-              type="button"
-              onClick={() => confirmSingleAiField(key, currentVal)}
-              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700 text-[10px] font-semibold cursor-pointer"
-              title="Duyệt giá trị này (kể cả NULL)"
-            >
-              Duyệt
-            </button>
-          )}
-        </div>
-      );
-    }
-    return (
-      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
-        Tin cậy cao
-      </span>
-    );
-  };
-
-  const renderEvidenceBox = (key: AiExtractedFieldKey) => {
-    const ev = nguonTrichXuat[key];
-    if (!ev && !daBocTachAi) return null;
-    return (
-      <div className="mt-1 px-2.5 py-1.5 rounded-md bg-slate-950/90 border border-slate-800/90 text-[11px] text-slate-400 flex items-start gap-1.5">
-        <span className="text-violet-400 font-semibold shrink-0">Bằng chứng:</span>
-        <span className="italic text-slate-300 break-words">
-          {ev?.bang_chung
-            ? `"${ev.bang_chung}"`
-            : "Không có thông tin trong văn bản gốc (NULL)"}
-        </span>
-      </div>
-    );
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-      {/* Click outside backdrop */}
-      <div className="flex-1" onClick={onClose} />
-
-      {/* Right Slide-Over Panel */}
-      <div className="w-full max-w-2xl bg-slate-950 border-l border-slate-800 h-full flex flex-col shadow-2xl text-slate-100 overflow-hidden">
-        {/* Top Sticky Header */}
-        <div className="px-5 py-4 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold">
-                {maTk || item.suggestedMaTk}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                  BUSINESS_STATUS_META[trangThaiKinhDoanh].badgeClass
-                }`}
-              >
-                {BUSINESS_STATUS_META[trangThaiKinhDoanh].label}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                  PROCESSING_STATUS_META[trangThaiXuLy].badgeClass
-                }`}
-              >
-                {PROCESSING_STATUS_META[trangThaiXuLy].label}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                  currentMissingLabels.length === 0
-                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                    : "bg-rose-500/15 text-rose-300 border-rose-500/35"
-                }`}
-              >
-                Độ đầy đủ: {filledNow}/11
-              </span>
-            </div>
-            <h3 className="text-sm font-bold text-slate-100 truncate mt-1">
-              {[soNha, duong, phuong].filter(Boolean).join(", ") ||
-                item.raw.name ||
-                "Chỉnh sửa bản ghi kho chuẩn"}
-            </h3>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 cursor-pointer shrink-0"
-            title="Đóng ngăn chỉnh sửa"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Missing Fields Alert Banner */}
-        {currentMissingLabels.length > 0 ? (
-          <div className="px-5 py-2.5 bg-rose-950/50 border-b border-rose-500/30 flex items-center justify-between gap-2 shrink-0">
-            <div className="flex items-center gap-2 text-xs text-rose-200">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>
-                Thiếu <b>{currentMissingLabels.length}</b> trường bắt buộc (đã tô đỏ):{" "}
-                <span className="font-semibold text-rose-300">
-                  {currentMissingLabels.join(", ")}
-                </span>
-              </span>
-            </div>
-            {currentMissingLabels.length > 0 && trangThaiXuLy === "san_sang" && (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold shrink-0">
-                Cần điền đủ để xuất chuẩn
-              </span>
-            )}
-          </div>
-        ) : (
-          <div className="px-5 py-2 bg-emerald-950/40 border-b border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300 shrink-0">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Đầy đủ 11/11 trường bắt buộc — Đạt chuẩn xuất Hometea & Post Writer.</span>
-            </div>
-            {trangThaiXuLy !== "san_sang" &&
-              trangThaiXuLy !== "da_len_hometea" &&
-              trangThaiXuLy !== "da_dang_fb" && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-6 overflow-y-auto animate-fadeIn">
+      <div className="flex flex-col w-full max-w-[1100px] max-h-[96vh] rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden my-auto">
+        
+        {/* THANH TRÊN CÙNG (HEADER) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-slate-800 bg-slate-950/80 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 max-w-full sm:max-w-[55%]">
+            <span className="font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-bold shrink-0">
+              {maTk || "MÃ MỚI"}
+            </span>
+            <div className="flex flex-col min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-slate-100 truncate" title={cleanAddress}>
+                {cleanAddress}
+              </h2>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                <span className="truncate">Thô: {rawTitle}</span>
                 <button
-                  type="button"
-                  onClick={() => handleSaveChanges(undefined, true)}
-                  className="px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] cursor-pointer"
+                  onClick={() => setShowRawName(!showRawName)}
+                  className="text-amber-400 hover:underline shrink-0 flex items-center gap-1"
                 >
-                  Xác nhận & Chuyển Sẵn sàng
+                  <Eye className="w-3 h-3" />
+                  {showRawName ? "Ẩn tên thô" : "Xem tên thô"}
                 </button>
-              )}
-          </div>
-        )}
-
-        {/* Scrollable Form Body */}
-        <form
-          onSubmit={handleSaveChanges}
-          className="flex-1 overflow-y-auto p-5 space-y-6"
-        >
-          {/* GROUP 1: ĐỊNH DANH & 2 CỘT TRẠNG THÁI */}
-          <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                1. Mã TK & Hai cột trạng thái
-              </h4>
-              {isMaTkMissing && (
-                <button
-                  type="button"
-                  onClick={() => setMaTk(item.suggestedMaTk)}
-                  className="text-[11px] px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold cursor-pointer"
-                >
-                  Gán mã chuẩn: {item.suggestedMaTk}
-                </button>
+              </div>
+              {showRawName && (
+                <div className="mt-1 p-2 rounded bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono break-all max-h-24 overflow-y-auto">
+                  {rawTitle}
+                </div>
               )}
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Mã TK (Khóa chuẩn) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={maTk}
-                  onChange={(e) => setMaTk(e.target.value.toUpperCase())}
-                  placeholder="VD: TK2JLH4L"
-                  disabled={isViewer}
-                  className={`${fieldInputClass(isMaTkMissing)} font-mono uppercase`}
-                />
-                {item.legacyToken && isMaTkMissing && (
-                  <p className="text-[10px] text-rose-400 mt-1">
-                    Mã kiểu cũ ({item.legacyToken}) — cần đổi sang mã TK chuẩn
-                  </p>
-                )}
-              </div>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap">
+            {/* Thanh bước trạng thái */}
+            <div className="hidden lg:flex items-center gap-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => setTrangThaiXuLy("tho")}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  trangThaiXuLy === "tho" || trangThaiXuLy === "can_bo_sung"
+                    ? "bg-amber-500/20 text-amber-300 font-medium"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Cần bổ sung
+              </button>
+              <span className="text-slate-600">→</span>
+              <button
+                onClick={() => setTrangThaiXuLy("san_sang")}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  trangThaiXuLy === "san_sang"
+                    ? "bg-emerald-500/20 text-emerald-300 font-medium"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Sẵn sàng
+              </button>
+              <span className="text-slate-600">→</span>
+              <span
+                className={`px-2.5 py-1 rounded-lg ${
+                  hometeaTrangThai !== "chua_dang"
+                    ? "bg-cyan-500/20 text-cyan-300 font-medium"
+                    : "text-slate-500"
+                }`}
+              >
+                Hometea
+              </span>
+            </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Trạng thái kinh doanh
-                </label>
-                <select
-                  value={trangThaiKinhDoanh}
-                  onChange={(e) =>
-                    setTrangThaiKinhDoanh(e.target.value as BusinessStatusType)
-                  }
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
+            {/* Số thứ tự tin & nút Trước/Sau */}
+            <div className="flex items-center gap-1 text-xs text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60">
+              <span className="font-semibold text-amber-400">{currentIndex + 1}</span>
+              <span className="text-slate-500">/</span>
+              <span>{allItems.length} cần duyệt</span>
+              <div className="flex items-center gap-0.5 ml-2 border-l border-slate-700 pl-2">
+                <button
+                  onClick={handlePrev}
+                  disabled={currentIndex <= 0}
+                  className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300"
+                  title="Tin trước (Phím K)"
                 >
-                  <option value="nguon_tho">nguon_tho (Nguồn thô)</option>
-                  <option value="da_ky">da_ky (Đã ký)</option>
-                  <option value="da_ban">da_ban (Đã bán)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Trạng thái xử lý
-                </label>
-                <select
-                  value={trangThaiXuLy}
-                  onChange={(e) => {
-                    const nextVal = e.target.value as ProcessingStatusType;
-                    setTrangThaiXuLy(nextVal);
-                    if (nextVal === "san_sang") setDaXacNhanAi(true);
-                  }}
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleNext}
+                  disabled={currentIndex < 0 || currentIndex >= allItems.length - 1}
+                  className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300"
+                  title="Tin sau (Phím J)"
                 >
-                  <option value="tho">tho (Thô)</option>
-                  <option value="can_bo_sung">can_bo_sung (Cần bổ sung)</option>
-                  <option value="san_sang">san_sang (Sẵn sàng)</option>
-                  <option value="da_len_hometea">
-                    da_len_hometea (Đã lên Hometea)
-                  </option>
-                  <option value="da_dang_fb">da_dang_fb (Đã đăng FB)</option>
-                </select>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
-            {/* Kênh đã xuất */}
-            <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-4 text-xs">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={daXuatHometea || trangThaiXuLy === "da_len_hometea"}
-                    onChange={(e) => setDaXuatHometea(e.target.checked)}
-                    disabled={isViewer}
-                    className="rounded border-slate-700 bg-slate-900 text-cyan-500"
-                  />
-                  <span className="text-slate-300">Đã xuất Hometea</span>
-                </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={daXuatFb || trangThaiXuLy === "da_dang_fb"}
-                    onChange={(e) => setDaXuatFb(e.target.checked)}
-                    disabled={isViewer}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-500"
-                  />
-                  <span className="text-slate-300">Đã xuất Post Writer / FB</span>
-                </label>
-              </div>
-
-              {onExportSingle && (
-                <div className="flex items-center gap-1.5">
+            {/* Menu More (⋯) */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-slate-800 border border-slate-700 shadow-xl py-1 z-50">
                   <button
-                    type="button"
-                    onClick={() => onExportSingle(item, "hometea")}
-                    className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="w-full text-left px-4 py-2 text-xs text-rose-400 hover:bg-rose-500/10 flex items-center gap-2"
                   >
-                    <Send className="w-3 h-3" />
-                    Đẩy Hometea
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onExportSingle(item, "post_writer")}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Share2 className="w-3 h-3" />
-                    Xuất Post Writer
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Xóa nguồn này
                   </button>
                 </div>
               )}
             </div>
-          </section>
 
-          {/* GROUP 1.5: KẾT QUẢ BÓC TÁCH BẰNG AI & BẰNG CHỨNG VĂN BẢN (nguon_trich_xuat) */}
-          <section className="p-4 rounded-xl bg-violet-950/20 border border-violet-500/35 space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-violet-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-                  Bóc tách bằng AI & Bằng chứng gốc (`nguon_trich_xuat`)
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Chỉ lấy thông tin CÓ trong văn bản (không có để NULL). Sửa tay sẽ khóa trường đó để chạy lại AI không ghi đè.
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* NỘI DUNG 2 CỘT */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 overflow-y-auto lg:overflow-hidden max-h-[calc(96vh-130px)]">
+          
+          {/* CỘT TRÁI: Form duyệt chi tiết */}
+          <div className="flex flex-col h-full overflow-y-auto p-4 sm:p-6 space-y-5 border-r border-slate-800 bg-slate-900 text-sm">
+            
+            {/* KHU: Cần quyết định */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Cần quyết định ({[!phapLy, !loaiViTri].filter(Boolean).length})
+                </h3>
+                <span className="text-xs text-slate-400">Các trường bắt buộc hoặc cần AI xác nhận</span>
+              </div>
+
+              {/* Pháp lý (Bắt buộc) */}
+              <div
+                onClick={() => scrollToEvidence("phap_ly")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer ${getFieldStatusColor(
+                  "phap_ly",
+                  phapLy
+                )}`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-slate-300">Pháp lý *</label>
+                  {!phapLy && <span className="text-[11px] text-amber-400 font-medium">cần chọn</span>}
+                </div>
+                <input
+                  type="text"
+                  value={phapLy}
+                  onChange={(e) => {
+                    setPhapLy(e.target.value);
+                    if (!aiManualFields.includes("phap_ly")) {
+                      setAiManualFields([...aiManualFields, "phap_ly"]);
+                    }
+                  }}
+                  list="phap-ly-list"
+                  placeholder="Nhập hoặc chọn pháp lý..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+                <datalist id="phap-ly-list">
+                  {PHAP_LY_PRESETS.map((p) => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-400 mt-1.5 italic truncate">
+                  Bằng chứng: {getEvidence("phap_ly")}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                {onRunAiSingle && !isViewer && (
-                  <button
-                    type="button"
-                    disabled={isRunningAiSingle}
-                    onClick={async () => {
-                      setIsRunningAiSingle(true);
-                      try {
-                        await onRunAiSingle(item);
-                      } finally {
-                        setIsRunningAiSingle(false);
-                      }
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {isRunningAiSingle
-                      ? "Đang bóc tách..."
-                      : daBocTachAi
-                      ? "Bóc tách lại bằng AI"
-                      : "Bóc tách bằng AI"}
-                  </button>
-                )}
-
-                {!isViewer && (
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={() => handleSaveChanges(undefined, true)}
-                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Xác nhận duyệt &rarr; Sẵn sàng
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* 1. loai_vi_tri */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    1. Loại vị trí (`loai_vi_tri`)
-                  </label>
-                  {renderAiFieldStatusBadge("loai_vi_tri", loaiViTri || null)}
+              {/* Loại vị trí (Bắt buộc) */}
+              <div
+                onClick={() => scrollToEvidence("loai_vi_tri")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer ${getFieldStatusColor(
+                  "loai_vi_tri",
+                  loaiViTri
+                )}`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-slate-300">Loại vị trí *</label>
+                  {!loaiViTri && <span className="text-[11px] text-amber-400 font-medium">cần chọn</span>}
                 </div>
                 <select
                   value={loaiViTri}
                   onChange={(e) => {
-                    const val = e.target.value as LoaiViTriType | "";
-                    setLoaiViTri(val);
-                    markAiFieldManual("loai_vi_tri", val || null);
+                    setLoaiViTri(e.target.value as LoaiViTriType);
+                    if (!aiManualFields.includes("loai_vi_tri")) {
+                      setAiManualFields([...aiManualFields, "loai_vi_tri"]);
+                    }
                   }}
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("loai_vi_tri", loaiViTri || null)
-                  )}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="">-- NULL (Chưa rõ / Không có trong bài) --</option>
+                  <option value="">-- Chọn loại vị trí --</option>
                   {LOAI_VI_TRI_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
                 </select>
-                {renderEvidenceBox("loai_vi_tri")}
+                <p className="text-[11px] text-slate-400 mt-1.5 italic truncate">
+                  Bằng chứng: {getEvidence("loai_vi_tri")}
+                </p>
               </div>
 
-              {/* 2. huong */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    2. Hướng (`huong`)
-                  </label>
-                  {renderAiFieldStatusBadge("huong", huong || null)}
+              {/* Các trường cơ bản (Giá, Diện tích, Địa chỉ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Giá chào</label>
+                  <input
+                    type="text"
+                    value={giaInput}
+                    onChange={(e) => {
+                      setGiaInput(e.target.value);
+                      const num = Number(e.target.value.replace(/[.,\s]/g, ""));
+                      if (!isNaN(num)) setGiaVnd(num);
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                  />
+                  {giaVnd && <span className="text-[10px] text-amber-400 mt-0.5 block">{giaVnd / 1e9} tỷ</span>}
                 </div>
-                <select
-                  value={huong}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setHuong(val);
-                    markAiFieldManual("huong", val || null);
-                  }}
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("huong", huong || null)
-                  )}
-                >
-                  <option value="">
-                    -- NULL (Xuất Hometea: &quot;Không xác định&quot;) --
-                  </option>
-                  {HUONG_OPTIONS.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-                {renderEvidenceBox("huong")}
-              </div>
 
-              {/* 3. phap_ly */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 sm:col-span-2">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    3. Pháp lý (`phap_ly`) — Chỉ ghi &quot;hoàn công&quot; khi bài có nói
-                  </label>
-                  {renderAiFieldStatusBadge("phap_ly", phapLy || null)}
-                </div>
-                <input
-                  type="text"
-                  list="phap-ly-preset-list"
-                  value={phapLy}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setPhapLy(val);
-                    markAiFieldManual("phap_ly", val.trim() || null);
-                  }}
-                  placeholder="NULL nếu không có. VD: Sổ hồng riêng | Sổ hồng riêng, hoàn công | Sổ hồng riêng (đang vay)..."
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("phap_ly", phapLy || null)
-                  )}
-                />
-                <datalist id="phap-ly-preset-list">
-                  {PHAP_LY_PRESETS.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-                {renderEvidenceBox("phap_ly")}
-              </div>
-
-              {/* 4. so_phong_ngu & so_wc */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    4a. Số phòng ngủ (`so_phong_ngu`)
-                  </label>
-                  {renderAiFieldStatusBadge("so_phong_ngu", soPhongNgu || null)}
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={soPhongNgu}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSoPhongNgu(val);
-                    markAiFieldManual(
-                      "so_phong_ngu",
-                      val.trim() && Number(val) > 0 ? Math.round(Number(val)) : null
-                    );
-                  }}
-                  placeholder="NULL (Không điền 0)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("so_phong_ngu", soPhongNgu || null)
-                  )}
-                />
-                {renderEvidenceBox("so_phong_ngu")}
-              </div>
-
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    4b. Số WC (`so_wc`)
-                  </label>
-                  {renderAiFieldStatusBadge("so_wc", soWc || null)}
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={soWc}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSoWc(val);
-                    markAiFieldManual(
-                      "so_wc",
-                      val.trim() && Number(val) > 0 ? Math.round(Number(val)) : null
-                    );
-                  }}
-                  placeholder="NULL (Không điền 0)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("so_wc", soWc || null)
-                  )}
-                />
-                {renderEvidenceBox("so_wc")}
-              </div>
-
-              {/* 5. duong_vao_m */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    6a. Đường/hẻm vào (m) (`duong_vao_m`)
-                  </label>
-                  {renderAiFieldStatusBadge("duong_vao_m", duongVaoM || null)}
-                </div>
-                <input
-                  type="number"
-                  step="any"
-                  min={0.5}
-                  value={duongVaoM}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDuongVaoM(val);
-                    markAiFieldManual(
-                      "duong_vao_m",
-                      val.trim() && Number(val) > 0 ? Number(val) : null
-                    );
-                  }}
-                  placeholder="NULL (VD: 5, 4.5)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("duong_vao_m", duongVaoM || null)
-                  )}
-                />
-                {renderEvidenceBox("duong_vao_m")}
-              </div>
-
-              {/* 6. hien_trang */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    6b. Hiện trạng & Thuê (`hien_trang`)
-                  </label>
-                  {renderAiFieldStatusBadge("hien_trang", hienTrang || null)}
-                </div>
-                <input
-                  type="text"
-                  value={hienTrang}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setHienTrang(val);
-                    markAiFieldManual("hien_trang", val.trim() || null);
-                  }}
-                  placeholder="NULL (VD: Nhà mới ở ngay, đang cho thuê 10tr/th)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("hien_trang", hienTrang || null)
-                  )}
-                />
-                {renderEvidenceBox("hien_trang")}
-              </div>
-
-              {/* 7. dac_diem */}
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 sm:col-span-2">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-[11px] font-bold text-slate-200">
-                    6c. Đặc điểm nổi bật (`dac_diem` — ngăn cách bởi dấu phẩy)
-                  </label>
-                  {renderAiFieldStatusBadge("dac_diem", dacDiemInput || null)}
-                </div>
-                <input
-                  type="text"
-                  value={dacDiemInput}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDacDiemInput(val);
-                    const arr = val
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    markAiFieldManual("dac_diem", arr.length > 0 ? arr : null);
-                  }}
-                  placeholder="NULL (VD: lô góc, view sông, thang máy, gần trường)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    doesAiFieldNeedConfirm("dac_diem", dacDiemInput || null)
-                  )}
-                />
-                {renderEvidenceBox("dac_diem")}
-              </div>
-            </div>
-          </section>
-
-          {/* GROUP 2: ĐỊA CHỈ CHUẨN */}
-          <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5" />
-              2. Địa chỉ chuẩn (Số nhà `so_nha`, Tên đường sạch `ten_duong`, Phường)
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <label className="block text-[11px] font-semibold text-slate-300">
-                    Số nhà (`so_nha`) <span className="text-rose-400">*</span>
-                  </label>
-                  {renderAiFieldStatusBadge("so_nha", soNha || null)}
-                </div>
-                <input
-                  type="text"
-                  value={soNha}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSoNha(val);
-                    markAiFieldManual("so_nha", val.trim() || null);
-                  }}
-                  placeholder="VD: 17/21 (Không điền Thửa/Tờ)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    isSoNhaMissing || doesAiFieldNeedConfirm("so_nha", soNha || null)
-                  )}
-                />
-                {renderEvidenceBox("so_nha")}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <label className="block text-[11px] font-semibold text-slate-300">
-                    Tên đường (`ten_duong`) <span className="text-rose-400">*</span>
-                  </label>
-                  {renderAiFieldStatusBadge("ten_duong", duong || null)}
-                </div>
-                <input
-                  type="text"
-                  value={duong}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDuong(val);
-                    markAiFieldManual("ten_duong", val.trim() || null);
-                  }}
-                  placeholder="Không có chữ 'Đường' dư (VD: Lò Lu)"
-                  disabled={isViewer}
-                  className={fieldInputClass(
-                    isDuongMissing || doesAiFieldNeedConfirm("ten_duong", duong || null)
-                  )}
-                />
-                {renderEvidenceBox("ten_duong")}
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Phường / Khu vực <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  list="warehouse-ward-options"
-                  value={phuong}
-                  onChange={(e) => setPhuong(e.target.value)}
-                  placeholder="Chọn hoặc nhập phường..."
-                  disabled={isViewer}
-                  className={fieldInputClass(isPhuongMissing)}
-                />
-                <datalist id="warehouse-ward-options">
-                  {DISTRICT_OPTIONS.map((d) => (
-                    <option key={d} value={d} />
-                  ))}
-                </datalist>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                Tọa độ / Link Google Maps (Tùy chọn)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={toaDo}
-                  onChange={(e) => setToaDo(e.target.value)}
-                  placeholder="Link Google Maps hoặc tọa độ 10.8..., 106.7..."
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
-                />
-                {toaDo.startsWith("http") && (
-                  <a
-                    href={toaDo}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 shrink-0"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Mở Map
-                  </a>
-                )}
-              </div>
-            </div>
-          </section>
-
-          {/* GROUP 3: DIỆN TÍCH & KẾT CẤU */}
-          <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <Ruler className="w-3.5 h-3.5" />
-                3. Diện tích (Sổ / Thực tế) & Kích thước
-              </h4>
-              {item.needsAreaReview && (
-                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                  {item.areaReviewReason}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  DT Sổ (m²) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={dienTichSo}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDienTichSo(v);
-                    if (!dienTichThucTe && v) setDienTichThucTe(v);
-                  }}
-                  placeholder="VD: 67"
-                  disabled={isViewer}
-                  className={fieldInputClass(isDtSoMissing)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  DT Thực tế (m²) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={dienTichThucTe}
-                  onChange={(e) => setDienTichThucTe(e.target.value)}
-                  placeholder="VD: 75"
-                  disabled={isViewer}
-                  className={fieldInputClass(isDtThucTeMissing)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Rộng (m) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={rong}
-                  onChange={(e) => setRong(e.target.value)}
-                  placeholder="VD: 4"
-                  disabled={isViewer}
-                  className={fieldInputClass(isRongMissing)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Dài (m) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={dai}
-                  onChange={(e) => setDai(e.target.value)}
-                  placeholder="VD: 18.5"
-                  disabled={isViewer}
-                  className={fieldInputClass(isDaiMissing)}
-                />
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Số tầng <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={soTang}
-                  onChange={(e) => setSoTang(e.target.value)}
-                  placeholder="VD: 3"
-                  disabled={isViewer}
-                  className={fieldInputClass(isSoTangMissing)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  Loại hình bất động sản
-                </label>
-                <input
-                  type="text"
-                  value={loaiHinh}
-                  onChange={(e) => setLoaiHinh(e.target.value)}
-                  placeholder="Nhà phố / Đất nền / Biệt thự..."
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parsed = parseAreaNumbers(`${dienTichSo}/${dienTichThucTe}`);
-                    if (parsed.dien_tich_so && !dienTichThucTe) {
-                      setDienTichThucTe(String(parsed.dien_tich_so));
-                    } else if (dienTichSo && !dienTichThucTe) {
-                      setDienTichThucTe(dienTichSo);
-                    } else if (!dienTichSo && dienTichThucTe) {
-                      setDienTichSo(dienTichThucTe);
-                    }
-                  }}
-                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer w-full"
-                >
-                  Đồng bộ DT Sổ = DT Thực tế (nếu 1 số)
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* GROUP 4: GIÁ CHÀO & ĐƠN GIÁ */}
-          <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5" />
-                4. Giá chào (VNĐ nguyên)
-              </h4>
-              {item.isAbnormalPricePerM2 && (
-                <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold">
-                  {item.abnormalPriceReason}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Giá chào (Nhập VD: 4.8 tỷ hoặc 4800000000){" "}
-                  <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={giaInput}
-                  onChange={(e) => handlePriceInputChange(e.target.value)}
-                  placeholder="VD: 6.5 tỷ"
-                  disabled={isViewer}
-                  className={fieldInputClass(isGiaMissing)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  Giá nguyên VNĐ lưu vào DB (`gia`)
-                </label>
-                <div className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center justify-between">
-                  <span>
-                    {giaVnd && giaVnd > 0
-                      ? giaVnd.toLocaleString("vi-VN") + " đ"
-                      : "Chưa có giá hợp lệ"}
-                  </span>
-                  {giaVnd && (numDtThucTe || numDtSo) ? (
-                    <span className="text-slate-400">
-                      ~
-                      {(
-                        giaVnd /
-                        1_000_000 /
-                        (numDtThucTe || numDtSo || 1)
-                      ).toFixed(1)}{" "}
-                      tr/m²
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* GROUP 5: PHẦN NỘI BỘ (BẢO MẬT - KHÔNG XUẤT RA VIEW v_nguon_xuat) */}
-          <section className="p-4 rounded-xl bg-rose-950/15 border border-rose-500/30 space-y-3.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-rose-400" />
-                5. Thông tin Nội bộ (Bảo mật kho)
-              </h4>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold">
-                Tuyệt đối KHÔNG xuất sang v_nguon_xuat & Hometea
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Môi giới nguồn (`moi_gioi_nguon`)
-                </label>
-                <input
-                  type="text"
-                  value={moiGioiNguon}
-                  onChange={(e) => setMoiGioiNguon(e.target.value)}
-                  placeholder="Tên đầu chủ / MG nguồn"
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  SĐT nguồn (`sdt_nguon`)
-                </label>
-                <input
-                  type="text"
-                  value={sdtNguon}
-                  onChange={(e) => setSdtNguon(e.target.value)}
-                  placeholder="SĐT liên hệ nội bộ"
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Hoa hồng (`hoa_hong`)
-                </label>
-                <input
-                  type="text"
-                  value={hoaHong}
-                  onChange={(e) => setHoaHong(e.target.value)}
-                  placeholder="VD: 1% hoặc 100 triệu"
-                  disabled={isViewer}
-                  className={fieldInputClass(false)}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-slate-400" />
-                Mô tả thô nguyên bản (`mo_ta_tho` - chỉ dùng nội bộ)
-              </label>
-              <textarea
-                rows={4}
-                value={moTaTho}
-                onChange={(e) => setMoTaTho(e.target.value)}
-                placeholder="Nội dung mô tả thô từ file .txt hoặc ghi chú nội bộ..."
-                disabled={isViewer}
-                className={`${fieldInputClass(false)} font-mono text-[11px] leading-relaxed`}
-              />
-            </div>
-          </section>
-
-          {/* GROUP 6: HÌNH ẢNH */}
-          <section
-            className={`p-4 rounded-xl border space-y-3.5 ${
-              isAnhMissing
-                ? "bg-rose-950/20 border-rose-500/60"
-                : "bg-slate-900/60 border-slate-800"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5" />
-                6. Hình ảnh ({imageUrls.length} ảnh){" "}
-                <span className="text-rose-400">*</span>
-              </h4>
-              {isAnhMissing && (
-                <span className="text-[11px] text-rose-400 font-semibold">
-                  Cần tối thiểu 1 ảnh
-                </span>
-              )}
-            </div>
-
-            {!isViewer && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newImageUrl}
-                  onChange={(e) => setNewImageUrl(e.target.value)}
-                  placeholder="Dán link ảnh mới (Cloudinary / URL)..."
-                  className={fieldInputClass(false)}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddImage}
-                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 shrink-0 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Thêm ảnh
-                </button>
-              </div>
-            )}
-
-            {imageUrls.length > 0 ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto pr-1">
-                {imageUrls.map((url, idx) => (
-                  <div
-                    key={`${url}-${idx}`}
-                    className={`relative group rounded-lg overflow-hidden border aspect-square bg-slate-950 ${
-                      idx === 0
-                        ? "border-amber-500 ring-2 ring-amber-500/30"
-                        : "border-slate-800"
-                    }`}
-                  >
-                    <SmartImage
-                      src={url}
-                      alt={`Ảnh ${idx + 1}`}
-                      className="w-full h-full object-cover"
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Diện tích (Sổ / Thực tế)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      value={dienTichSo}
+                      onChange={(e) => setDienTichSo(e.target.value)}
+                      placeholder="Sổ"
+                      className="w-1/2 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100"
                     />
-                    {idx === 0 && (
-                      <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-bold text-[9px]">
-                        Đại diện
-                      </span>
-                    )}
-                    {!isViewer && (
-                      <div className="absolute inset-x-0 bottom-0 p-1 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between gap-1">
-                        {idx !== 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => handleSetPrimaryImage(idx)}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/40 cursor-pointer"
-                          >
-                            Đặt đại diện
-                          </button>
-                        ) : (
-                          <span className="text-[9px] text-slate-400 px-1">
-                            Ảnh #1
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(idx)}
-                          className="p-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/40 cursor-pointer"
-                          title="Xóa ảnh"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
+                    <input
+                      type="number"
+                      value={dienTichThucTe}
+                      onChange={(e) => setDienTichThucTe(e.target.value)}
+                      placeholder="Thực tế"
+                      className="w-1/2 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100"
+                    />
                   </div>
-                ))}
+                </div>
               </div>
-            ) : (
-              <div className="p-4 rounded-lg border border-dashed border-rose-500/40 text-center text-xs text-rose-300">
-                Chưa có hình ảnh nào trong bản ghi này.
-              </div>
-            )}
-          </section>
 
-          {/* GROUP 7: XEM TRƯỚC DỮ LIỆU XUẤT (VIEW v_nguon_xuat) */}
-          <section className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowViewPreview((p) => !p)}
-                className="text-xs font-bold text-cyan-400 flex items-center gap-1.5 cursor-pointer hover:underline"
-              >
-                <Code2 className="w-4 h-4" />
-                {showViewPreview
-                  ? "Ẩn bản ghi xuất chuẩn (v_nguon_xuat)"
-                  : "Xem trước dữ liệu dòng này trên VIEW v_nguon_xuat"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    JSON.stringify(vNguonXuatPreview, null, 2)
-                  );
-                  setCopiedJson(true);
-                  setTimeout(() => setCopiedJson(false), 2000);
-                }}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1 cursor-pointer"
-              >
-                {copiedJson ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-400" />
-                    Đã chép JSON
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" />
-                    Chép JSON chuẩn
-                  </>
-                )}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Số nhà</label>
+                  <input
+                    type="text"
+                    value={soNha}
+                    onChange={(e) => setSoNha(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Tên đường</label>
+                  <input
+                    type="text"
+                    value={duong}
+                    onChange={(e) => setDuong(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Phường</label>
+                  <select
+                    value={phuong}
+                    onChange={(e) => setPhuong(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100"
+                  >
+                    <option value="">-- Chọn --</option>
+                    {DISTRICT_OPTIONS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
-            {showViewPreview && (
-              <pre className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300 overflow-x-auto">
-                {JSON.stringify(vNguonXuatPreview, null, 2)}
-              </pre>
-            )}
-          </section>
-        </form>
-
-        {/* Bottom Sticky Action Bar */}
-        <div className="px-5 py-3.5 bg-slate-900/95 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            {onDelete && !isViewer && (
+            {/* KHU: Đã đủ (Thu gọn mặc định, bấm mở) */}
+            <div className="border border-slate-800 rounded-xl bg-slate-950/40 overflow-hidden">
               <button
-                type="button"
-                onClick={() => onDelete(item.raw)}
-                className="px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowSummarySection(!showSummarySection)}
+                className="w-full flex items-center justify-between p-3 text-xs font-medium text-slate-300 hover:bg-slate-800/50 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                Xóa nguồn
+                <span>Thông tin bổ sung / Đã đủ ({[huong, soPhongNgu, soWc, duongVaoM].filter(Boolean).length})</span>
+                <span className="text-amber-400 text-xs">{showSummarySection ? "Thu gọn ▲" : "Chi tiết ▼"}</span>
               </button>
-            )}
-            {saveMessage && (
-              <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1 truncate">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                {saveMessage}
-              </span>
-            )}
-            {saveError && (
-              <span className="text-xs text-rose-400 font-semibold truncate">
-                {saveError}
-              </span>
-            )}
+
+              {showSummarySection && (
+                <div className="p-3 border-t border-slate-800 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Hướng</label>
+                      <select
+                        value={huong}
+                        onChange={(e) => setHuong(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100"
+                      >
+                        <option value="">-- Không xác định --</option>
+                        {HUONG_OPTIONS.map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Số tầng</label>
+                      <input
+                        type="text"
+                        value={soTang}
+                        onChange={(e) => setSoTang(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Phòng ngủ</label>
+                      <input
+                        type="number"
+                        value={soPhongNgu}
+                        onChange={(e) => setSoPhongNgu(e.target.value)}
+                        placeholder="—"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">WC</label>
+                      <input
+                        type="number"
+                        value={soWc}
+                        onChange={(e) => setSoWc(e.target.value)}
+                        placeholder="—"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Đường vào (m)</label>
+                      <input
+                        type="number"
+                        value={duongVaoM}
+                        onChange={(e) => setDuongVaoM(e.target.value)}
+                        placeholder="—"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100 text-center"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Các trường KHÔNG bắt buộc (hiện dấu "—" xám nếu trống) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs text-slate-400 border-t border-slate-800">
+              <div>
+                <span>Hướng: </span>
+                <span className={huong ? "text-slate-200 font-medium" : "text-slate-600"}>
+                  {huong || "—"}
+                </span>
+              </div>
+              <div>
+                <span>PN / WC: </span>
+                <span className={soPhongNgu || soWc ? "text-slate-200 font-medium" : "text-slate-600"}>
+                  {soPhongNgu || "—"}PN / {soWc || "—"}WC
+                </span>
+              </div>
+              <div>
+                <span>Đường vào: </span>
+                <span className={duongVaoM ? "text-slate-200 font-medium" : "text-slate-600"}>
+                  {duongVaoM ? `${duongVaoM}m` : "—"}
+                </span>
+              </div>
+            </div>
+
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
+          {/* CỘT PHẢI: Văn bản gốc cuộn được (Che mọi SĐT và tên người bằng ***) */}
+          <div className="flex flex-col h-full bg-slate-950 p-4 sm:p-6 overflow-hidden">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 shrink-0 flex items-center justify-between">
+              <span>Văn bản gốc (đã che SĐT & tên chủ)</span>
+              <span className="text-[11px] text-slate-500 font-normal">Bấm trường bên trái để rà bằng chứng</span>
+            </h3>
+
+            <div
+              ref={originalContentRef}
+              className="flex-1 overflow-y-auto rounded-xl bg-slate-900/80 border border-slate-800 p-4 text-xs sm:text-sm text-slate-300 font-mono leading-relaxed space-y-3 select-text"
             >
-              Đóng
+              {moTaTho ? (
+                maskText(moTaTho).split("\n").map((line, idx) => (
+                  <div key={idx} data-evidence-key={`line-${idx}`} className="py-0.5 transition-colors rounded px-1">
+                    {line}
+                  </div>
+                ))
+              ) : (
+                <p className="text-slate-600 italic">Không có nội dung mô tả gốc.</p>
+              )}
+
+              {/* Hình ảnh đính kèm */}
+              {imageUrls.length > 0 && (
+                <div className="pt-4 border-t border-slate-800">
+                  <span className="text-xs font-sans text-slate-400 block mb-2">Ảnh tài sản ({imageUrls.length}):</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {imageUrls.map((url, i) => (
+                      <div key={i} className="aspect-video rounded-lg overflow-hidden border border-slate-800 bg-slate-950">
+                        <SmartImage src={url} alt={`Ảnh ${i + 1}`} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* CHÂN TRANG CỐ ĐỊNH */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-t border-slate-800 bg-slate-950 shrink-0">
+          {/* Bên trái: Hometea status (CHỈ ĐỌC) */}
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span className="font-medium text-slate-300">Hometea:</span>
+            <span
+              className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                hometeaTrangThai === "cong_khai"
+                  ? "bg-cyan-500/20 text-cyan-300"
+                  : hometeaTrangThai === "nhap"
+                  ? "bg-amber-500/20 text-amber-300"
+                  : "bg-slate-800 text-slate-400"
+              }`}
+            >
+              {hometeaTrangThai === "cong_khai"
+                ? "Công khai"
+                : hometeaTrangThai === "nhap"
+                ? "Nháp"
+                : "Chưa đăng"}
+            </span>
+            {hometeaId && <span className="font-mono text-slate-500">(ID: {hometeaId})</span>}
+          </div>
+
+          {/* Giữa / Phải: Nút hành động */}
+          <div className="flex items-center gap-2.5">
+            {saveMessage && <span className="text-xs text-emerald-400 font-medium animate-fadeIn">{saveMessage}</span>}
+
+            <button
+              onClick={handleSaveOnly}
+              disabled={isSaving || isViewer}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50"
+            >
+              Lưu
             </button>
-            {!isViewer && (
-              <button
-                type="button"
-                onClick={() => handleSaveChanges()}
-                disabled={isSaving}
-                className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {isSaving ? "Đang lưu..." : "Lưu chuẩn hóa"}
-              </button>
-            )}
+
+            <button
+              onClick={handleSaveAndReady}
+              disabled={isSaving || isViewer}
+              className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <span>Lưu & xác nhận → tin kế</span>
+            </button>
           </div>
         </div>
+
+        {/* Modal xác nhận xóa khi chọn "Xóa nguồn này" */}
+        {showDeleteConfirm && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl space-y-4">
+              <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Xác nhận xóa nguồn
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Hành động này sẽ xóa vĩnh viễn tin có mã <strong className="text-amber-400 font-mono">{maTk}</strong>. Vui lòng gõ lại mã TK để xác nhận:
+              </p>
+              <input
+                type="text"
+                value={deleteInputCode}
+                onChange={(e) => setDeleteInputCode(e.target.value)}
+                placeholder={`Nhập lại: ${maTk}`}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-rose-500"
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
+                >
+                  Hủy
+                </button>
+                <button
+                  disabled={deleteInputCode.trim() !== maTk.trim()}
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    if (onDelete && item.raw) onDelete(item.raw);
+                    onClose();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold disabled:opacity-40 transition-colors"
+                >
+                  Xóa vĩnh viễn
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

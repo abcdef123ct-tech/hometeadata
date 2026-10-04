@@ -57,7 +57,7 @@ interface BulkFolderImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportSuccess: () => void;
-  cloudinaryConfig: { cloudName: string; uploadPreset: string };
+  cloudinaryConfig?: { cloudName: string; uploadPreset: string };
   currentUser?: AuthUser | null;
 }
 

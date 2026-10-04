@@ -139,6 +139,7 @@ export interface Property {
   da_xuat_fb?: boolean;
   da_len_hometea?: boolean;
   hometea_id?: string | null;
+  hometea_trang_thai?: string | null;
   da_xep_lich_fb?: boolean;
   da_dang_fb?: boolean;
   ngay_xuat_hometea?: string;
@@ -251,6 +252,10 @@ export interface ConfigStatus {
   adminPasswordConfigured: boolean;
   missingVars: string[];
   setupSQL?: string;
+  cloudinary?: {
+    cloudName?: string;
+    uploadPreset?: string;
+  };
 }
 
 export interface UserProfile {
