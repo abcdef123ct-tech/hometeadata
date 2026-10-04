@@ -634,23 +634,25 @@ export default function PropertyFormModal({ property, isOpen, onClose, onSave, c
   // Submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setSubmitError("Tên chủ nhà không được bỏ trống.");
-      return;
+    let finalName = name.trim();
+    if (!finalName) {
+      if (content.trim()) {
+        const firstLine = content.trim().split("\n")[0].slice(0, 60);
+        finalName = firstLine || "Nguồn nhà mới";
+      } else {
+        finalName = "Nguồn nhà mới";
+      }
     }
-    if (!district) {
-      setSubmitError("Vui lòng chọn Khu vực (Quận/Huyện) bắt buộc.");
-      return;
-    }
+    const finalDistrict = district || "Khác";
 
     setSubmitting(true);
     setSubmitError(null);
 
     const payload: Property = {
       id: property?.id,
-      name: name.trim(),
+      name: finalName,
       phone: phone.trim(),
-      district: district,
+      district: finalDistrict,
       facebook_link: facebookLink.trim(),
       website_link: websiteLink.trim(),
       content: content.trim(),
@@ -661,12 +663,17 @@ export default function PropertyFormModal({ property, isOpen, onClose, onSave, c
       created_by_name: property?.created_by_name,
     };
 
-    const result = await onSave(payload);
-    setSubmitting(false);
-    if (result.success) {
-      onClose();
-    } else {
-      setSubmitError(result.error || "Lưu thông tin thất bại. Vui lòng kiểm tra lại kết nối cơ sở dữ liệu.");
+    try {
+      const result = await onSave(payload);
+      setSubmitting(false);
+      if (result && result.success) {
+        onClose();
+      } else {
+        setSubmitError(result?.error || "Lưu thông tin thất bại. Vui lòng kiểm tra lại kết nối cơ sở dữ liệu.");
+      }
+    } catch (err: any) {
+      setSubmitting(false);
+      setSubmitError(err.message || "Lỗi lưu thông tin.");
     }
   };
 

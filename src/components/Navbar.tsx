@@ -207,10 +207,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onAddNew}
                 id="btn-add-property"
-                className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm transition-all cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm transition-all cursor-pointer shrink-0"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>Thêm nguồn</span>
+                <span className="hidden xs:inline sm:inline">Thêm nguồn</span>
               </button>
             )}
 

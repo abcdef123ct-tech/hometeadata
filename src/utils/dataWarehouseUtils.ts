@@ -289,13 +289,14 @@ export function isStandardMaTk(val?: string | null): boolean {
 /**
  * Sinh mã TK chuẩn duy nhất cho bản ghi cũ (kiểu #10, #11 hoặc chưa có ma_tk)
  */
-export function generateStandardMaTk(prop: Property, indexFallback = 1): {
+export function generateStandardMaTk(prop?: Property | null, indexFallback = 1): {
   legacyToken: string;
   suggestedMaTk: string;
 } {
-  const rawCode = (prop.ma_tk || "").trim();
-  const rawName = (prop.name || "").trim();
-  const rawContent = (prop.content || "").trim();
+  const safeProp = prop || ({} as Property);
+  const rawCode = (safeProp.ma_tk || "").trim();
+  const rawName = (safeProp.name || "").trim();
+  const rawContent = (safeProp.content || "").trim();
 
   // Check if there is an old #number token like #10, #11
   let legacyNum = "";
@@ -311,7 +312,7 @@ export function generateStandardMaTk(prop: Property, indexFallback = 1): {
     legacyNum = hashMatchContent[1];
   }
 
-  const idClean = String(prop.id || "")
+  const idClean = String(safeProp.id || "")
     .replace(/[^a-zA-Z0-9]/g, "")
     .toUpperCase();
   const idSuffix = idClean.slice(0, 4) || String(indexFallback).padStart(4, "0");
@@ -334,7 +335,7 @@ export function generateStandardMaTk(prop: Property, indexFallback = 1): {
  * Tách thông tin cấu trúc từ bản ghi hiện có (kết hợp cả cột trực tiếp, tên thư mục và nội dung text)
  */
 export function normalizePropertyRecord(
-  prop: Property,
+  prop?: Property | null,
   indexFallback = 1
 ): NormalizedWarehouseProperty {
   const safeProp = prop || ({} as Property);
@@ -343,10 +344,10 @@ export function normalizePropertyRecord(
   const rawContent = (safeProp.content || "").trim();
 
   // Try parsing rawName as a folder name if structured fields are missing
-  const folderParsed = rawName ? parseFolderName(rawName, prop.phuong || prop.district || "") : null;
+  const folderParsed = rawName ? parseFolderName(rawName, safeProp.phuong || safeProp.district || "") : null;
 
   // 1. Mã TK
-  let extractedMaTk = (prop.ma_tk || "").trim().toUpperCase();
+  let extractedMaTk = (safeProp.ma_tk || "").trim().toUpperCase();
   if (!isStandardMaTk(extractedMaTk)) {
     if (isStandardMaTk(parsedLegacy.sourceCode)) {
       extractedMaTk = parsedLegacy.sourceCode.trim().toUpperCase();
@@ -356,18 +357,18 @@ export function normalizePropertyRecord(
   }
 
   const isLegacyOrMissingMaTk = !isStandardMaTk(extractedMaTk);
-  const { legacyToken, suggestedMaTk } = generateStandardMaTk(prop, indexFallback);
+  const { legacyToken, suggestedMaTk } = generateStandardMaTk(safeProp, indexFallback);
   const effectiveMaTk = isLegacyOrMissingMaTk ? (extractedMaTk || legacyToken || "") : extractedMaTk;
 
   // 2. Địa chỉ: so_nha, ten_duong (duong), dia_chi, phuong
   const hasAiAddressExtraction =
-    Boolean(prop.da_boc_tach_ai) ||
-    Boolean(prop.nguon_trich_xuat && ("so_nha" in prop.nguon_trich_xuat || "ten_duong" in prop.nguon_trich_xuat));
+    Boolean(safeProp.da_boc_tach_ai) ||
+    Boolean(safeProp.nguon_trich_xuat && ("so_nha" in safeProp.nguon_trich_xuat || "ten_duong" in safeProp.nguon_trich_xuat));
 
-  let so_nha = sanitizeSoNha(prop.so_nha);
-  let duong = sanitizeTenDuong(prop.ten_duong || prop.duong || "");
-  const rawDiaChi = String(prop.dia_chi || "").trim();
-  let phuong = String(prop.phuong || prop.district || "").trim();
+  let so_nha = sanitizeSoNha(safeProp.so_nha);
+  let duong = sanitizeTenDuong(safeProp.ten_duong || safeProp.duong || "");
+  const rawDiaChi = String(safeProp.dia_chi || "").trim();
+  let phuong = String(safeProp.phuong || safeProp.district || "").trim();
 
   // Strip trailing ", <phuong>" from dia_chi if present so duong doesn't duplicate phuong
   let cleanDiaChi = rawDiaChi;
@@ -510,8 +511,8 @@ export function normalizePropertyRecord(
       : rawAreaStr;
 
   // 4. Rộng, Dài, Số tầng, Loại hình
-  let rong = String(prop.rong ?? "").trim();
-  let dai = String(prop.dai ?? "").trim();
+  let rong = String(safeProp.rong ?? "").trim();
+  let dai = String(safeProp.dai ?? "").trim();
   if ((!rong || !dai) && folderParsed?.rong && folderParsed?.dai) {
     if (!rong) rong = folderParsed.rong;
     if (!dai) dai = folderParsed.dai;
@@ -526,7 +527,7 @@ export function normalizePropertyRecord(
     }
   }
 
-  let loai_hinh = String(prop.loai_hinh || "").trim();
+  let loai_hinh = String(safeProp.loai_hinh || "").trim();
   if (!loai_hinh) {
     const lhMatch = rawContent.match(/Loại hình:\s*([^\n\r]+)/i);
     if (lhMatch) loai_hinh = lhMatch[1].trim();
@@ -534,7 +535,7 @@ export function normalizePropertyRecord(
     else loai_hinh = "Nhà phố";
   }
 
-  let so_tang = String(prop.so_tang ?? "").trim();
+  let so_tang = String(safeProp.so_tang ?? "").trim();
   if (!so_tang && folderParsed?.so_tang) {
     so_tang = folderParsed.so_tang;
   }
@@ -547,8 +548,8 @@ export function normalizePropertyRecord(
 
   // 5. Giá (VNĐ)
   let gia: number | null =
-    prop.gia !== null && prop.gia !== undefined && !isNaN(Number(prop.gia)) && Number(prop.gia) > 0
-      ? Math.round(Number(prop.gia))
+    safeProp.gia !== null && safeProp.gia !== undefined && !isNaN(Number(safeProp.gia)) && Number(safeProp.gia) > 0
+      ? Math.round(Number(safeProp.gia))
       : null;
 
   if (!gia) {
@@ -577,10 +578,10 @@ export function normalizePropertyRecord(
   }
 
   // 6. Ảnh
-  const rawImageUrls = Array.isArray(prop.image_urls)
-    ? prop.image_urls.filter((u) => typeof u === "string" && u.trim().length > 0)
+  const rawImageUrls = Array.isArray(safeProp.image_urls)
+    ? safeProp.image_urls.filter((u) => typeof u === "string" && u.trim().length > 0)
     : [];
-  const rawAnh = Array.isArray(prop.anh) ? prop.anh : [];
+  const rawAnh = Array.isArray(safeProp.anh) ? safeProp.anh : [];
   const urlsFromAnh = rawAnh
     .filter((a: any) => a && typeof a.url === "string" && a.url.trim().length > 0 && !a.is_hidden)
     .map((a: any) => a.url.trim());
@@ -597,15 +598,15 @@ export function normalizePropertyRecord(
 
   // 7. Nội bộ: moi_gioi_nguon, sdt_nguon, hoa_hong, mo_ta_tho
   const moi_gioi_nguon = (
-    prop.moi_gioi_nguon ||
+    safeProp.moi_gioi_nguon ||
     parsedLegacy.leadBrokerName ||
-    prop.created_by_name ||
+    safeProp.created_by_name ||
     ""
   ).trim();
-  const sdt_nguon = (prop.sdt_nguon || prop.phone || parsedLegacy.leadBrokerPhone || "").trim();
-  const hoa_hong = (prop.hoa_hong || parsedLegacy.commission || "").trim();
+  const sdt_nguon = (safeProp.sdt_nguon || safeProp.phone || parsedLegacy.leadBrokerPhone || "").trim();
+  const hoa_hong = (safeProp.hoa_hong || parsedLegacy.commission || "").trim();
 
-  let mo_ta_tho = (prop.mo_ta_tho || "").trim();
+  let mo_ta_tho = (safeProp.mo_ta_tho || "").trim();
   if (!mo_ta_tho) {
     const moTaSplit = rawContent.split(/---\s*MO TA\s*---/i);
     if (moTaSplit.length > 1) {
@@ -615,20 +616,20 @@ export function normalizePropertyRecord(
     }
   }
 
-  const toa_do = (prop.toa_do || parsedLegacy.googleMapsUrl || prop.website_link || "").trim();
+  const toa_do = (safeProp.toa_do || parsedLegacy.googleMapsUrl || safeProp.website_link || "").trim();
 
   // 7.5. Các trường Bóc tách bằng AI (Chỉ lấy từ dữ liệu đã bóc tách / sửa tay, không tự đoán)
   const nguon_trich_xuat: NguonTrichXuatMap =
-    prop.nguon_trich_xuat && typeof prop.nguon_trich_xuat === "object"
-      ? { ...prop.nguon_trich_xuat }
+    safeProp.nguon_trich_xuat && typeof safeProp.nguon_trich_xuat === "object"
+      ? { ...safeProp.nguon_trich_xuat }
       : {};
 
   const da_boc_tach_ai = Boolean(
-    prop.da_boc_tach_ai || Object.keys(nguon_trich_xuat).length > 0
+    safeProp.da_boc_tach_ai || Object.keys(nguon_trich_xuat).length > 0
   );
-  const da_xac_nhan_ai = Boolean(prop.da_xac_nhan_ai);
-  const ai_manual_fields: AiExtractedFieldKey[] = Array.isArray(prop.ai_manual_fields)
-    ? prop.ai_manual_fields
+  const da_xac_nhan_ai = Boolean(safeProp.da_xac_nhan_ai);
+  const ai_manual_fields: AiExtractedFieldKey[] = Array.isArray(safeProp.ai_manual_fields)
+    ? safeProp.ai_manual_fields
     : [];
 
   const validLoaiViTri: LoaiViTriType[] = [
@@ -638,23 +639,23 @@ export function normalizePropertyRecord(
     "hem",
   ];
   const rawLoaiViTri =
-    prop.loai_vi_tri ?? nguon_trich_xuat.loai_vi_tri?.gia_tri ?? null;
+    safeProp.loai_vi_tri ?? nguon_trich_xuat.loai_vi_tri?.gia_tri ?? null;
   const loai_vi_tri: LoaiViTriType | null =
     rawLoaiViTri && validLoaiViTri.includes(rawLoaiViTri as LoaiViTriType)
       ? (rawLoaiViTri as LoaiViTriType)
       : null;
 
-  const rawHuong = prop.huong ?? nguon_trich_xuat.huong?.gia_tri ?? null;
+  const rawHuong = safeProp.huong ?? nguon_trich_xuat.huong?.gia_tri ?? null;
   const huong: string | null =
     rawHuong && String(rawHuong).trim() ? String(rawHuong).trim() : null;
 
-  const rawPhapLy = prop.phap_ly ?? nguon_trich_xuat.phap_ly?.gia_tri ?? null;
+  const rawPhapLy = safeProp.phap_ly ?? nguon_trich_xuat.phap_ly?.gia_tri ?? null;
   const phap_ly: string | null =
     rawPhapLy && String(rawPhapLy).trim() ? String(rawPhapLy).trim() : null;
 
   const rawPn =
-    prop.so_phong_ngu !== undefined
-      ? prop.so_phong_ngu
+    safeProp.so_phong_ngu !== undefined
+      ? safeProp.so_phong_ngu
       : nguon_trich_xuat.so_phong_ngu?.gia_tri;
   const so_phong_ngu: number | null =
     rawPn !== null &&
@@ -666,8 +667,8 @@ export function normalizePropertyRecord(
       : null;
 
   const rawWc =
-    prop.so_wc !== undefined
-      ? prop.so_wc
+    safeProp.so_wc !== undefined
+      ? safeProp.so_wc
       : nguon_trich_xuat.so_wc?.gia_tri;
   const so_wc: number | null =
     rawWc !== null &&
@@ -679,8 +680,8 @@ export function normalizePropertyRecord(
       : null;
 
   const rawDuongVao =
-    prop.duong_vao_m !== undefined
-      ? prop.duong_vao_m
+    safeProp.duong_vao_m !== undefined
+      ? safeProp.duong_vao_m
       : nguon_trich_xuat.duong_vao_m?.gia_tri;
   const duong_vao_m: number | null =
     rawDuongVao !== null &&
@@ -692,8 +693,8 @@ export function normalizePropertyRecord(
       : null;
 
   const rawDacDiem =
-    prop.dac_diem !== undefined
-      ? prop.dac_diem
+    safeProp.dac_diem !== undefined
+      ? safeProp.dac_diem
       : nguon_trich_xuat.dac_diem?.gia_tri;
   const dac_diem: string[] | null =
     Array.isArray(rawDacDiem) && rawDacDiem.filter(Boolean).length > 0
@@ -701,8 +702,8 @@ export function normalizePropertyRecord(
       : null;
 
   const rawHienTrang =
-    prop.hien_trang !== undefined
-      ? prop.hien_trang
+    safeProp.hien_trang !== undefined
+      ? safeProp.hien_trang
       : nguon_trich_xuat.hien_trang?.gia_tri;
   const hien_trang: string | null =
     rawHienTrang && String(rawHienTrang).trim()
@@ -776,29 +777,29 @@ export function normalizePropertyRecord(
   // 9. Ánh xạ 2 cột trạng thái: trang_thai_kinh_doanh & trang_thai_xu_ly
   let trang_thai_kinh_doanh: BusinessStatusType = "nguon_tho";
   if (
-    prop.trang_thai_kinh_doanh &&
-    ["nguon_tho", "da_ky", "da_ban"].includes(prop.trang_thai_kinh_doanh)
+    safeProp.trang_thai_kinh_doanh &&
+    ["nguon_tho", "da_ky", "da_ban"].includes(safeProp.trang_thai_kinh_doanh)
   ) {
-    trang_thai_kinh_doanh = prop.trang_thai_kinh_doanh;
-  } else if (prop.status === "da_ban" || prop.trang_thai_nguon === "đã bán") {
+    trang_thai_kinh_doanh = safeProp.trang_thai_kinh_doanh;
+  } else if (safeProp.status === "da_ban" || safeProp.trang_thai_nguon === "đã bán") {
     trang_thai_kinh_doanh = "da_ban";
-  } else if (prop.status === "da_ky" || prop.status === "da_chot") {
+  } else if (safeProp.status === "da_ky" || safeProp.status === "da_chot") {
     trang_thai_kinh_doanh = "da_ky";
   } else {
     trang_thai_kinh_doanh = "nguon_tho";
   }
 
-  let da_xuat_hometea = !!(prop.da_xuat_hometea || prop.da_len_hometea);
-  let da_xuat_fb = !!(prop.da_xuat_fb || prop.da_dang_fb);
+  let da_xuat_hometea = !!(safeProp.da_xuat_hometea || safeProp.da_len_hometea);
+  let da_xuat_fb = !!(safeProp.da_xuat_fb || safeProp.da_dang_fb);
 
   let trang_thai_xu_ly: ProcessingStatusType = "tho";
   if (
-    prop.trang_thai_xu_ly &&
+    safeProp.trang_thai_xu_ly &&
     ["tho", "can_bo_sung", "san_sang", "da_len_hometea", "da_dang_fb"].includes(
-      prop.trang_thai_xu_ly
+      safeProp.trang_thai_xu_ly
     )
   ) {
-    trang_thai_xu_ly = prop.trang_thai_xu_ly;
+    trang_thai_xu_ly = safeProp.trang_thai_xu_ly;
     if (trang_thai_xu_ly === "da_len_hometea") da_xuat_hometea = true;
     if (trang_thai_xu_ly === "da_dang_fb") da_xuat_fb = true;
     // Quy tắc bắt buộc: Tin đã bóc tách AI nhưng chưa được người dùng xác nhận thì chưa chuyển sang 'san_sang'
@@ -819,7 +820,7 @@ export function normalizePropertyRecord(
       trang_thai_xu_ly = "da_len_hometea";
     } else if (da_xac_nhan_ai) {
       trang_thai_xu_ly = "san_sang";
-    } else if (hasCoreThree || prop.trang_thai_nguon === "đã bổ sung" || da_boc_tach_ai) {
+    } else if (hasCoreThree || safeProp.trang_thai_nguon === "đã bổ sung" || da_boc_tach_ai) {
       trang_thai_xu_ly = "can_bo_sung";
     } else {
       trang_thai_xu_ly = "tho";
@@ -842,12 +843,12 @@ export function normalizePropertyRecord(
   const areaCheck = validateAreaCrossCheck(dien_tich_so, dien_tich_thuc_te, rong, dai);
 
   const fullAddress =
-    prop.dia_chi ||
+    safeProp.dia_chi ||
     [so_nha, duong || ten_duong, phuong].filter(Boolean).join(", ") ||
-    prop.name ||
+    safeProp.name ||
     "";
   const displayName =
-    prop.name ||
+    safeProp.name ||
     [so_nha, duong || ten_duong].filter(Boolean).join(" ") ||
     fullAddress ||
     effectiveMaTk ||
@@ -858,13 +859,13 @@ export function normalizePropertyRecord(
     displayName;
 
   return {
-    raw: prop,
-    id: prop.id || `temp-${indexFallback}`,
+    raw: safeProp,
+    id: safeProp.id || `temp-${indexFallback}`,
     name: displayName,
     dia_chi: fullAddress,
     cleanAddress: cleanAddr,
     ma_tk: effectiveMaTk,
-    raw_ma_tk: prop.ma_tk || "",
+    raw_ma_tk: safeProp.ma_tk || "",
     isLegacyOrMissingMaTk,
     legacyToken,
     suggestedMaTk,
@@ -905,8 +906,8 @@ export function normalizePropertyRecord(
     trang_thai_xu_ly,
     da_xuat_hometea,
     da_xuat_fb,
-    hometea_id: prop.hometea_id || null,
-    hometea_trang_thai: prop.hometea_trang_thai || "chua_dang",
+    hometea_id: safeProp.hometea_id || null,
+    hometea_trang_thai: safeProp.hometea_trang_thai || "chua_dang",
     missingFieldKeys,
     missingFieldLabels,
     thieuString: missingFieldKeys.join(", "),

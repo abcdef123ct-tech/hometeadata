@@ -32,7 +32,7 @@ export interface ParsedPropertyData {
   }>;
 }
 
-export function parsePropertyData(prop: Property): ParsedPropertyData {
+export function parsePropertyData(prop?: Property | null): ParsedPropertyData {
   const safeProp = prop || ({} as Property);
   const content = safeProp.content || "";
   const rawName = (safeProp.name || "").trim();
@@ -45,7 +45,7 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
     rawName.split(/\s+/).length <= 4 &&
     rawName.length > 0;
 
-  const ownerName = isLikelyPersonName ? rawName : (prop.created_by_name || "");
+  const ownerName = isLikelyPersonName ? rawName : (safeProp.created_by_name || "");
 
   // 2. Extract Source Code (e.g. TK64NIGN)
   let sourceCode = "";
@@ -242,11 +242,11 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
     }
   }
 
-  if (!leadBrokerName && prop.created_by_name && prop.created_by_name !== "Chưa phân công") {
-    leadBrokerName = prop.created_by_name;
+  if (!leadBrokerName && safeProp.created_by_name && safeProp.created_by_name !== "Chưa phân công") {
+    leadBrokerName = safeProp.created_by_name;
   }
-  if (!leadBrokerName && prop.manager?.full_name) {
-    leadBrokerName = prop.manager.full_name;
+  if (!leadBrokerName && safeProp.manager?.full_name) {
+    leadBrokerName = safeProp.manager.full_name;
   }
 
   // Determine standard role badge label
@@ -255,11 +255,11 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
   if (r.includes("phó phòng") || r.includes("phó p.")) {
     leadBrokerRoleLabel = "PHÓ PHÒNG";
   } else if (r.includes("trưởng phòng") || r.includes("trưởng p.")) {
-    leadBrokerRoleLabel = "TRƯỞNG PHÒNG";
+    leadBrokerRoleLabel = "TRƯỜNG PHÒNG";
   } else if (r.includes("giám đốc") || r.includes("giáp đốc")) {
     leadBrokerRoleLabel = r.includes("phó") ? "PHÓ GIÁM ĐỐC" : "GIÁM ĐỐC";
   } else if (r.includes("khối trưởng") || r.includes("trưởng khối")) {
-    leadBrokerRoleLabel = "KHỐI TRƯỞNG";
+    leadBrokerRoleLabel = "KHỐI TRƯỜNG";
   } else if (r.includes("đầu chủ")) {
     leadBrokerRoleLabel = "ĐẦU CHỦ";
   } else if (r.includes("chuyên viên")) {
@@ -269,7 +269,7 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
   }
 
   // 7. Lead Broker Phone
-  let leadBrokerPhone = prop.phone ? prop.phone.trim() : "";
+  let leadBrokerPhone = safeProp.phone ? safeProp.phone.trim() : "";
   if (!leadBrokerPhone) {
     // 1. Line with phone and Facebook: e.g. "0983370335 : Facebook"
     const phoneMatch1 = content.match(/(\b0[0-9]{9,10}\b)\s*:\s*Facebook/i);
@@ -291,15 +291,15 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
     }
   }
 
-  if (!leadBrokerPhone && prop.manager?.phone) {
-    leadBrokerPhone = prop.manager.phone;
+  if (!leadBrokerPhone && safeProp.manager?.phone) {
+    leadBrokerPhone = safeProp.manager.phone;
   }
-  if (!leadBrokerPhone && prop.created_by_phone) {
-    leadBrokerPhone = prop.created_by_phone;
+  if (!leadBrokerPhone && safeProp.created_by_phone) {
+    leadBrokerPhone = safeProp.created_by_phone;
   }
 
   // 8. Lead Broker Facebook
-  let leadBrokerFacebook = prop.facebook_link || "";
+  let leadBrokerFacebook = safeProp.facebook_link || "";
   if (!leadBrokerFacebook) {
     const fbMatch = content.match(/https:\/\/(?:www\.)?facebook\.com\/[^\s\n\r]+/i);
     if (fbMatch) {
@@ -308,7 +308,7 @@ export function parsePropertyData(prop: Property): ParsedPropertyData {
   }
 
   // 9. Google Maps URL
-  let googleMapsUrl = prop.website_link && /maps/i.test(prop.website_link) ? prop.website_link : "";
+  let googleMapsUrl = safeProp.website_link && /maps/i.test(safeProp.website_link) ? safeProp.website_link : "";
   if (!googleMapsUrl) {
     const mapMatch1 = content.match(/Dinh vi:\s*(https:\/\/[^\s\n\r]+)/i);
     const mapMatch2 = content.match(/https:\/\/goo\.gl\/maps\/[^\s\n\r]+/i);

@@ -108,6 +108,8 @@ export default function BulkFolderImportModal({
   const [persistedSession, setPersistedSession] = useState<BulkImportPersistedSession | null>(null);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const multiFileInputRef = useRef<HTMLInputElement>(null);
+  const appendFolderInputRef = useRef<HTMLInputElement>(null);
 
   // Load any saved IndexedDB session when modal opens
   useEffect(() => {
@@ -280,45 +282,72 @@ export default function BulkFolderImportModal({
   /**
    * Group files by first-level subfolder and run Phase 1 browser scan
    */
-  const processSelectedFiles = async (fileList: Array<{ file: File; relativePath: string }>) => {
+  const processSelectedFiles = async (
+    fileList: Array<{ file: File; relativePath: string }>,
+    append = false
+  ) => {
     if (!fileList || fileList.length === 0) return;
 
     setScanning(true);
     setScanProgressText("Đang gom nhóm các thư mục con...");
 
     try {
-      // Release old object URLs
-      items.forEach((item) =>
-        item.images.forEach((img) => {
-          if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
-        })
-      );
+      if (!append) {
+        // Release old object URLs if starting fresh
+        items.forEach((item) =>
+          item.images.forEach((img) => {
+            if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+          })
+        );
+      }
 
-      const folderGroups = new Map<string, { parentName: string; files: File[] }>();
-      let detectedParent = "";
+      const folderGroups = new Map<
+        string,
+        { parentName: string; subFolderName: string; files: File[] }
+      >();
+      const detectedParentsSet = new Set<string>();
 
       for (const entry of fileList) {
         const cleanPath = entry.relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
         const parts = cleanPath.split("/").filter(Boolean);
-        if (parts.length < 2) continue;
+        if (parts.length === 0) continue;
 
         let subFolderName = "";
         let parentName = "";
 
-        if (parts.length >= 3) {
-          parentName = parts[0];
-          subFolderName = parts[1];
-          if (!detectedParent) detectedParent = parentName;
+        if (parts.length >= 2) {
+          // File is inside at least 1 folder
+          // parts[parts.length - 1] is the file name
+          // parts[parts.length - 2] is the immediate property subfolder name
+          subFolderName = parts[parts.length - 2];
+
+          if (parts.length >= 3) {
+            // There are parent folder(s) above the property subfolder
+            const parentParts = parts.slice(0, parts.length - 2);
+            parentName = parentParts.join(" / ");
+            // Use immediate parent folder as area/phuong candidate
+            const immediateParent = parentParts[parentParts.length - 1];
+            if (immediateParent) detectedParentsSet.add(immediateParent);
+          }
         } else {
-          // parts.length === 2: user selected a single property folder directly
-          subFolderName = parts[0];
+          // Loose file without directory structure (parts.length === 1)
+          const fileName = parts[0];
+          const tkMatch = fileName.match(/\b(TK[A-Za-z0-9_-]{4,15})\b/i);
+          if (tkMatch) {
+            subFolderName = tkMatch[1].toUpperCase();
+          } else {
+            const baseWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+            subFolderName = baseWithoutExt || "Tep_Le";
+          }
           parentName = "";
         }
 
-        if (!folderGroups.has(subFolderName)) {
-          folderGroups.set(subFolderName, { parentName, files: [] });
+        const groupKey = parentName ? `${parentName}/${subFolderName}` : subFolderName;
+
+        if (!folderGroups.has(groupKey)) {
+          folderGroups.set(groupKey, { parentName, subFolderName, files: [] });
         }
-        folderGroups.get(subFolderName)!.files.push(entry.file);
+        folderGroups.get(groupKey)!.files.push(entry.file);
       }
 
       if (folderGroups.size === 0 && fileList.length > 0) {
@@ -326,22 +355,40 @@ export default function BulkFolderImportModal({
         const rootName = firstPath.split("/")[0] || "Thu_Muc_Nguon";
         folderGroups.set(rootName, {
           parentName: "",
+          subFolderName: rootName,
           files: fileList.map((f) => f.file),
         });
       }
 
-      const defaultBatchArea = batchPhuong.trim() || detectedParent || "";
-      setParentFolderName(detectedParent || "Thư mục đã chọn");
-      if (!batchPhuong.trim() && detectedParent) {
-        setBatchPhuong(detectedParent);
+      const parentsArr = Array.from(detectedParentsSet);
+      let detectedParentDisplayName = "";
+      if (parentsArr.length === 1) {
+        detectedParentDisplayName = parentsArr[0];
+      } else if (parentsArr.length > 1) {
+        detectedParentDisplayName = `Nhiều khu vực (${parentsArr.slice(0, 3).join(", ")}${parentsArr.length > 3 ? "..." : ""})`;
+      }
+
+      const defaultBatchArea = batchPhuong.trim() || parentsArr[0] || "";
+      if (!append || !parentFolderName) {
+        setParentFolderName(detectedParentDisplayName || "Thư mục đã chọn");
+      }
+      if (!batchPhuong.trim() && parentsArr.length > 0) {
+        setBatchPhuong(parentsArr[0]);
       }
 
       const folderEntries = Array.from(folderGroups.entries());
       const parsedItems: BulkPropertyItem[] = [];
       const usedCodesInBatch = new Set<string>();
 
+      if (append) {
+        items.forEach((it) => {
+          if (it.ma_tk) usedCodesInBatch.add(it.ma_tk.toUpperCase());
+        });
+      }
+
       for (let i = 0; i < folderEntries.length; i++) {
-        const [subFolderName, group] = folderEntries[i];
+        const [groupKey, group] = folderEntries[i];
+        const subFolderName = group.subFolderName;
         setScanProgressText(
           `Đang phân tích (${i + 1}/${folderEntries.length}): ${subFolderName.substring(0, 45)}...`
         );
@@ -560,12 +607,18 @@ export default function BulkFolderImportModal({
         }
       }
 
-      setItems(parsedItems);
+      if (append) {
+        setItems((prev) => [...prev, ...parsedItems]);
+      } else {
+        setItems(parsedItems);
+      }
       setStep(2);
     } finally {
       setScanning(false);
       setScanProgressText("");
       if (folderInputRef.current) folderInputRef.current.value = "";
+      if (multiFileInputRef.current) multiFileInputRef.current.value = "";
+      if (appendFolderInputRef.current) appendFolderInputRef.current.value = "";
     }
   };
 
@@ -580,7 +633,35 @@ export default function BulkFolderImportModal({
       const relPath = (file as any).webkitRelativePath || file.name;
       list.push({ file, relativePath: relPath });
     }
-    processSelectedFiles(list);
+    processSelectedFiles(list, false);
+  };
+
+  // Multi-file / multi-folder input handler
+  const handleMultiFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const list: Array<{ file: File; relativePath: string }> = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relPath = (file as any).webkitRelativePath || file.name;
+      list.push({ file, relativePath: relPath });
+    }
+    processSelectedFiles(list, false);
+  };
+
+  // Append folder in Step 2 handler
+  const handleAppendFolderInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const list: Array<{ file: File; relativePath: string }> = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relPath = (file as any).webkitRelativePath || file.name;
+      list.push({ file, relativePath: relPath });
+    }
+    processSelectedFiles(list, true);
   };
 
   // Drag & Drop directory tree reader using webkitGetAsEntry
@@ -1467,11 +1548,10 @@ export default function BulkFolderImportModal({
                   setIsDraggingFolder(false);
                 }}
                 onDrop={handleFolderDrop}
-                onClick={() => !scanning && folderInputRef.current?.click()}
-                className={`p-8 sm:p-10 rounded-2xl border-2 border-dashed transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-4 ${
+                className={`p-8 sm:p-10 rounded-2xl border-2 border-dashed transition-all text-center flex flex-col items-center justify-center gap-4 ${
                   isDraggingFolder
                     ? "border-amber-400 bg-amber-500/10"
-                    : "border-slate-700 hover:border-amber-500/60 bg-slate-900/60 hover:bg-slate-900"
+                    : "border-slate-700 bg-slate-900/60 hover:bg-slate-900 hover:border-amber-500/60"
                 }`}
               >
                 <input
@@ -1480,6 +1560,13 @@ export default function BulkFolderImportModal({
                   multiple
                   {...({ webkitdirectory: "", directory: "" } as any)}
                   onChange={handleFolderInputChange}
+                  className="hidden"
+                />
+                <input
+                  ref={multiFileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleMultiFileInputChange}
                   className="hidden"
                 />
 
@@ -1498,20 +1585,31 @@ export default function BulkFolderImportModal({
                     </div>
                     <div className="space-y-1.5 max-w-lg">
                       <h3 className="text-lg font-bold text-white">
-                        Bấm để chọn Thư mục cha hoặc Kéo thả thư mục vào đây
+                        Nạp nhiều thư mục con tự động phân tách
                       </h3>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        Tự động trích xuất Mã TK thật, tách diện tích kép (<code>67-75</code>,{" "}
-                        <code>50/50</code>), khóa số tên đường (VD: <code>đường 12</code>) và kiểm
-                        tra trùng 1 lần trên Supabase theo danh sách <code>ma_tk</code>.
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        • <b>Cách 1 (Nhanh nhất)</b>: Bấm <b>&quot;Chọn thư mục từ máy tính&quot;</b> và chọn thư mục cha (VD: <code>Long Phước</code>), hệ thống sẽ tự động quét và tách <b>toàn bộ thư mục con</b> bên trong thành từng căn riêng biệt.<br />
+                        • <b>Cách 2 (Kéo thả)</b>: Bôi đen chọn nhiều thư mục con cùng lúc trong Windows/Mac rồi <b>Kéo thả trực tiếp</b> vào đây.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-                    >
-                      Chọn thư mục từ máy tính
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => folderInputRef.current?.click()}
+                        className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <FolderUp className="w-4 h-4 stroke-[2.5]" />
+                        <span>Chọn thư mục (Chọn Folder cha)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => multiFileInputRef.current?.click()}
+                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>Chọn tệp tin / Thư mục con</span>
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1624,6 +1722,25 @@ export default function BulkFolderImportModal({
                       className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
+
+                  {/* Add Additional Folders Button */}
+                  <input
+                    ref={appendFolderInputRef}
+                    type="file"
+                    multiple
+                    {...({ webkitdirectory: "", directory: "" } as any)}
+                    onChange={handleAppendFolderInputChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => appendFolderInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                    title="Bổ sung thêm các thư mục khác vào danh sách đối chiếu"
+                  >
+                    <FolderUp className="w-3.5 h-3.5" />
+                    <span>+ Thêm thư mục khác</span>
+                  </button>
 
                   {/* Toggle Update Existing */}
                   <label className="flex items-center gap-2 text-xs text-slate-300 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer select-none">

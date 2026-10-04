@@ -715,6 +715,10 @@ export default function App() {
     return properties.map(normalizePropertyRecord);
   }, [properties]);
 
+  const qualityIssuesCount = useMemo(() => {
+    return normalizedProperties.filter((p) => p.missingFieldKeys.length > 0).length;
+  }, [normalizedProperties]);
+
   // Derived filter option: unique wards in warehouse dataset
   const wardFilterOptions = useMemo(() => {
     const s = new Set<string>();
@@ -866,6 +870,14 @@ export default function App() {
           setDrawerItemId(null);
           setInlineAiRowId(null);
         }}
+        onAddNew={() => {
+          setEditingProperty(null);
+          setIsFormOpen(true);
+        }}
+        onOpenBulkImport={() => setIsBulkImportOpen(true)}
+        totalCount={normalizedProperties.length}
+        qualityIssuesCount={qualityIssuesCount}
+        exportLogsCount={exportLogs.length}
         onLogout={() => {
           localStorage.removeItem("admin_token");
           setIsAuthenticated(false);
@@ -1280,17 +1292,18 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-800/80">
                       {filteredItems.map((it) => {
+                        if (!it) return null;
                         const isSelected = selectedIds.has(it.id);
                         const isDrawerOpen = drawerItemId === it.id;
                         const isInlineEditing = inlineAiRowId === it.id;
-                        const xlMeta = PROCESSING_STATUS_META[it.trang_thai_xu_ly];
+                        const xlMeta = (it.trang_thai_xu_ly && PROCESSING_STATUS_META[it.trang_thai_xu_ly]) || PROCESSING_STATUS_META["tho"];
 
                         // Xác định trạng thái bóc tách AI (chấm tròn màu nhỏ)
                         // xám = chưa AI, vàng = cần xác nhận, xanh = đã duyệt
                         let aiDotColor = "bg-slate-500";
                         let aiTooltip = "Chưa bóc tách AI";
                         if (it.da_boc_tach_ai) {
-                          if (it.aiNeedsConfirmKeys.length > 0) {
+                          if ((it.aiNeedsConfirmKeys?.length || 0) > 0) {
                             aiDotColor = "bg-amber-500";
                             aiTooltip = "Có trường cần xác nhận";
                           } else {
@@ -1303,8 +1316,12 @@ export default function App() {
                         let hasWarning = false;
                         const dtSo = it.dien_tich_thuc_te || it.dien_tich_so;
                         if (it.rong && it.dai && dtSo) {
-                          const diffPct = Math.abs(it.rong * it.dai - dtSo) / dtSo;
-                          if (diffPct > 0.3) hasWarning = true;
+                          const numRong = Number(it.rong) || 0;
+                          const numDai = Number(it.dai) || 0;
+                          if (numRong > 0 && numDai > 0) {
+                            const diffPct = Math.abs(numRong * numDai - dtSo) / dtSo;
+                            if (diffPct > 0.3) hasWarning = true;
+                          }
                         }
 
                         return (
@@ -1659,7 +1676,7 @@ export default function App() {
             ) : (
               /* CHẾ ĐỘ THẺ (CARDS) */
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredItems.map((it) => (
+                {filteredItems.map((it) => it ? (
                   <PropertyCard
                     key={it.id}
                     property={it}
@@ -1667,7 +1684,7 @@ export default function App() {
                     onSelectToggle={(e) => toggleSelectOne(it.id, e)}
                     onClick={() => setDrawerItemId(it.id)}
                   />
-                ))}
+                ) : null)}
               </div>
             )}
           </div>

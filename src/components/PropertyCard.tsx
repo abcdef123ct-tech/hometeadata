@@ -16,53 +16,64 @@ import {
   normalizePropertyRecord,
   BUSINESS_STATUS_META,
   PROCESSING_STATUS_META,
+  NormalizedWarehouseProperty,
 } from "../utils/dataWarehouseUtils";
 import SmartImage from "./SmartImage";
 
 interface PropertyCardProps {
-  prop: Property;
+  prop?: Property;
+  property?: Property | NormalizedWarehouseProperty;
   currentUser?: AuthUser | null;
-  onEdit: (e: React.MouseEvent) => void;
-  onDelete: (e: React.MouseEvent) => void;
-  onClick: () => void;
+  onEdit?: (e: React.MouseEvent) => void;
+  onDelete?: (e: React.MouseEvent) => void;
+  onClick?: () => void;
   onStatusChange?: (e: React.MouseEvent, newStatus: PropertyStatus) => void;
   selected?: boolean;
+  isSelected?: boolean;
   onToggleSelect?: (e: React.MouseEvent) => void;
+  onSelectToggle?: (e: React.MouseEvent) => void;
 }
 
 export const PropertyCard: React.FC<PropertyCardProps> = ({
   prop,
+  property,
   currentUser,
-  onEdit,
-  onDelete,
-  onClick,
-  selected = false,
+  onEdit = () => {},
+  onDelete = () => {},
+  onClick = () => {},
+  selected,
+  isSelected,
   onToggleSelect,
+  onSelectToggle,
 }) => {
-  const norm = React.useMemo(() => normalizePropertyRecord(prop), [prop]);
+  const isCardSelected = Boolean(selected ?? isSelected);
+  const handleToggleSelect = onToggleSelect || onSelectToggle;
+
+  const targetProp = (prop || (property && "raw" in property ? (property as any).raw : property) || {}) as Property;
+  const norm = React.useMemo(() => normalizePropertyRecord(targetProp), [targetProp]);
   const mainImage = norm.imageUrls[0] || null;
 
   const isAdmin = currentUser?.role === "admin";
   const isStaff = currentUser?.role === "staff";
   const isOwner =
-    Boolean(currentUser?.id && prop.created_by === currentUser.id) ||
-    Boolean(currentUser?.email && prop.created_by === currentUser.email);
-  const canModify = isAdmin || (isStaff && (!prop.created_by || isOwner));
+    Boolean(currentUser?.id && targetProp.created_by === currentUser.id) ||
+    Boolean(currentUser?.email && targetProp.created_by === currentUser.email);
+  const canModify = isAdmin || (isStaff && (!targetProp.created_by || isOwner));
 
-  const kdMeta = BUSINESS_STATUS_META[norm.trang_thai_kinh_doanh];
-  const xlMeta = PROCESSING_STATUS_META[norm.trang_thai_xu_ly];
+  const kdMeta = BUSINESS_STATUS_META[norm.trang_thai_kinh_doanh] || BUSINESS_STATUS_META["nguon_tho"];
+  const xlMeta = PROCESSING_STATUS_META[norm.trang_thai_xu_ly] || PROCESSING_STATUS_META["tho"];
 
   return (
     <div
       onClick={onClick}
       className={`group rounded-2xl border overflow-hidden transition-all duration-200 flex flex-col justify-between cursor-pointer bg-slate-900/90 hover:bg-slate-900 ${
-        selected
+        isCardSelected
           ? "border-amber-500 ring-2 ring-amber-500/25"
           : "border-slate-800 hover:border-slate-700"
       }`}
     >
       <div>
-        {/* Image Header (Đã bỏ nút phóng to và bỏ huy hiệu HH theo đúng thiết kế Kho chuẩn) */}
+        {/* Image Header */}
         <div className="relative h-44 w-full bg-slate-950 overflow-hidden border-b border-slate-800/80">
           {mainImage ? (
             <SmartImage
@@ -83,12 +94,12 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 
           {/* Top Left: Checkbox + Mã TK */}
           <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
-            {onToggleSelect && (
+            {handleToggleSelect && (
               <button
                 type="button"
-                onClick={onToggleSelect}
+                onClick={handleToggleSelect}
                 className={`w-5 h-5 rounded flex items-center justify-center border transition-colors cursor-pointer ${
-                  selected
+                  isCardSelected
                     ? "bg-amber-500 border-amber-400 text-slate-950"
                     : "bg-black/60 border-white/30 text-transparent hover:border-amber-400"
                 }`}
@@ -150,7 +161,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
                 norm.cleanAddress ||
                 norm.dia_chi ||
                 norm.name ||
-                prop.name ||
+                targetProp.name ||
                 norm.ma_tk ||
                 "Bất động sản"}
             </div>
