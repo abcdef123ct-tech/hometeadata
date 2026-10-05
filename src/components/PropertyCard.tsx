@@ -10,6 +10,11 @@ import {
   AlertCircle,
   Send,
   Share2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  DownloadCloud,
+  Loader2,
 } from "lucide-react";
 import { Property, PropertyStatus, AuthUser } from "../types";
 import {
@@ -19,6 +24,30 @@ import {
   NormalizedWarehouseProperty,
 } from "../utils/dataWarehouseUtils";
 import SmartImage from "./SmartImage";
+
+async function downloadSingleImage(url: string, filename: string) {
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error("Network response was not ok");
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } catch (_e) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}
 
 interface PropertyCardProps {
   prop?: Property;
@@ -53,7 +82,58 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 
   const targetProp = (prop || (property && "raw" in property ? (property as any).raw : property) || {}) as Property;
   const norm = React.useMemo(() => normalizePropertyRecord(targetProp), [targetProp]);
-  const mainImage = norm.imageUrls[0] || null;
+  
+  const allImages = norm.imageUrls || [];
+  const totalImages = allImages.length;
+  const [currentImgIndex, setCurrentImgIndex] = React.useState(0);
+  const [isDownloading, setIsDownloading] = React.useState(false);
+
+  // Keep index within bounds if imageUrls change
+  React.useEffect(() => {
+    if (currentImgIndex >= totalImages && totalImages > 0) {
+      setCurrentImgIndex(0);
+    }
+  }, [totalImages, currentImgIndex]);
+
+  const currentImage = allImages[currentImgIndex] || allImages[0] || null;
+
+  const handlePrevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (totalImages <= 1) return;
+    setCurrentImgIndex((prev) => (prev > 0 ? prev - 1 : totalImages - 1));
+  };
+
+  const handleNextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (totalImages <= 1) return;
+    setCurrentImgIndex((prev) => (prev < totalImages - 1 ? prev + 1 : 0));
+  };
+
+  const handleDownloadSingle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentImage) return;
+    setIsDownloading(true);
+    const ext = currentImage.split(".").pop()?.split("?")[0] || "jpg";
+    const filename = `${norm.ma_tk || "nguon_nha"}_anh_${currentImgIndex + 1}.${ext}`;
+    await downloadSingleImage(currentImage, filename);
+    setIsDownloading(false);
+  };
+
+  const handleDownloadAll = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (totalImages === 0) return;
+    setIsDownloading(true);
+    for (let i = 0; i < totalImages; i++) {
+      const url = allImages[i];
+      const ext = url.split(".").pop()?.split("?")[0] || "jpg";
+      const filename = `${norm.ma_tk || "nguon_nha"}_anh_${i + 1}.${ext}`;
+      await downloadSingleImage(url, filename);
+      if (i < totalImages - 1) {
+        await new Promise((res) => setTimeout(res, 300));
+      }
+    }
+    setIsDownloading(false);
+  };
 
   const isAdmin = currentUser?.role === "admin";
   const isStaff = currentUser?.role === "staff";
@@ -75,13 +155,14 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
       }`}
     >
       <div>
-        {/* Image Header */}
-        <div className="relative h-44 w-full bg-slate-950 overflow-hidden border-b border-slate-800/80">
-          {mainImage ? (
+        {/* Image Header / Slider */}
+        <div className="relative h-48 w-full bg-slate-950 overflow-hidden border-b border-slate-800/80 group/slider">
+          {currentImage ? (
             <SmartImage
-              src={mainImage}
-              alt={norm.ma_tk}
-              className="w-full h-full object-cover"
+              key={currentImage}
+              src={currentImage}
+              alt={`${norm.ma_tk} - ảnh ${currentImgIndex + 1}`}
+              className="w-full h-full object-cover transition-all duration-300"
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-1.5">
@@ -93,6 +174,45 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           )}
 
           <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
+
+          {/* Left & Right Slider Arrows */}
+          {totalImages > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrevImage}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full bg-black/60 hover:bg-amber-500 hover:text-slate-950 text-white backdrop-blur-md transition-all cursor-pointer shadow-lg border border-white/10"
+                title="Ảnh trước đó"
+              >
+                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextImage}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full bg-black/60 hover:bg-amber-500 hover:text-slate-950 text-white backdrop-blur-md transition-all cursor-pointer shadow-lg border border-white/10"
+                title="Ảnh kế tiếp"
+              >
+                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
+
+              {/* Dot Indicators */}
+              {totalImages <= 8 && (
+                <div className="absolute bottom-11 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-xs border border-white/10 pointer-events-none">
+                  {allImages.map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={`h-1.5 rounded-full transition-all ${
+                        idx === currentImgIndex
+                          ? "w-3.5 bg-amber-400"
+                          : "w-1.5 bg-white/40"
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
           {/* Top Left: Checkbox + Mã TK */}
           <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
@@ -134,23 +254,56 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             </span>
           </div>
 
-          {/* Bottom Bar: Giá + Số ảnh */}
-          <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex items-end justify-between">
-            <div>
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-500 text-slate-950 font-extrabold text-xs shadow">
+          {/* Bottom Bar: Giá + Tải ảnh + Số ảnh */}
+          <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex items-end justify-between gap-1 z-10">
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500 text-slate-950 font-extrabold text-[11px] shadow">
                 {norm.gia_text || "Chưa có giá"}
               </span>
               {norm.pricePerM2Text && (
-                <span className="ml-1.5 text-[10px] font-mono text-slate-200 bg-black/50 px-1.5 py-0.5 rounded">
+                <span className="hidden sm:inline text-[9px] font-mono text-slate-200 bg-black/60 px-1.5 py-0.5 rounded border border-white/10">
                   {norm.pricePerM2Text}
                 </span>
               )}
             </div>
 
-            <span className="px-2 py-0.5 rounded bg-black/70 text-slate-200 text-[10px] font-mono flex items-center gap-1 border border-white/10">
-              <ImageIcon className="w-3 h-3 text-amber-400" />
-              {norm.imageCount} ảnh
-            </span>
+            {/* Quick Action Controls: Download Single / Download All / Count */}
+            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {currentImage && (
+                <button
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={handleDownloadSingle}
+                  className="px-2 py-0.5 rounded bg-amber-500/90 hover:bg-amber-400 text-slate-950 text-[10px] font-bold flex items-center gap-1 backdrop-blur-md transition-all cursor-pointer shadow-sm disabled:opacity-50 shrink-0"
+                  title={`Tải xuống ảnh hiện tại (${currentImgIndex + 1}/${totalImages})`}
+                >
+                  {isDownloading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3" />
+                  )}
+                  <span>Tải ảnh</span>
+                </button>
+              )}
+
+              {totalImages > 1 && (
+                <button
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={handleDownloadAll}
+                  className="px-1.5 py-0.5 rounded bg-slate-900/90 hover:bg-slate-800 text-amber-300 text-[10px] font-mono flex items-center gap-1 border border-amber-500/40 backdrop-blur-md transition-all cursor-pointer shadow-sm disabled:opacity-50 shrink-0"
+                  title={`Tải tất cả ${totalImages} ảnh về máy`}
+                >
+                  <DownloadCloud className="w-3 h-3 text-amber-400" />
+                  <span className="hidden xs:inline">Tất cả ({totalImages})</span>
+                </button>
+              )}
+
+              <span className="px-1.5 py-0.5 rounded bg-black/75 text-slate-200 text-[10px] font-mono flex items-center gap-1 border border-white/10 backdrop-blur-xs shrink-0">
+                <ImageIcon className="w-3 h-3 text-amber-400" />
+                {totalImages > 0 ? `${currentImgIndex + 1}/${totalImages}` : "0"}
+              </span>
+            </div>
           </div>
         </div>
 

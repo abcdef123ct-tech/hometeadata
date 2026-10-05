@@ -74,7 +74,7 @@ export function postToHometea({
 
   onStatusChange?.("Đang chờ Hometea...");
 
-  const hometeaWin = window.open(targetUrl, "_blank");
+  const hometeaWin = window.open(targetUrl, "hometea_admin");
 
   if (!hometeaWin) {
     onStatusChange?.("");

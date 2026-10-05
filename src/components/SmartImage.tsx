@@ -4,6 +4,7 @@ import { Maximize2, Minimize2, Smartphone, Monitor } from "lucide-react";
 export type ImageFitMode = "contain" | "cover" | "auto";
 
 interface SmartImageProps {
+  key?: React.Key;
   src?: string | null;
   alt?: string;
   className?: string;
