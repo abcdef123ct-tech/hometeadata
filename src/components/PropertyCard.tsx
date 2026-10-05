@@ -26,6 +26,7 @@ interface PropertyCardProps {
   currentUser?: AuthUser | null;
   onEdit?: (e: React.MouseEvent) => void;
   onDelete?: (e: React.MouseEvent) => void;
+  onPostHometea?: (e: React.MouseEvent) => void;
   onClick?: () => void;
   onStatusChange?: (e: React.MouseEvent, newStatus: PropertyStatus) => void;
   selected?: boolean;
@@ -40,6 +41,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
   currentUser,
   onEdit = () => {},
   onDelete = () => {},
+  onPostHometea,
   onClick = () => {},
   selected,
   isSelected,
@@ -260,6 +262,17 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           className="flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
+          {onPostHometea && (
+            <button
+              type="button"
+              onClick={onPostHometea}
+              className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+              title="Đăng lên Hometea"
+            >
+              <Send className="w-3 h-3" />
+              Đăng Hometea
+            </button>
+          )}
           <button
             type="button"
             onClick={onClick}

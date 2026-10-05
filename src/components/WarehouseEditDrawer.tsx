@@ -8,6 +8,7 @@ import {
   Eye,
   Sparkles,
   MoreVertical,
+  Send,
 } from "lucide-react";
 import {
   Property,
@@ -32,6 +33,7 @@ interface WarehouseEditDrawerProps {
   onClose: () => void;
   onSave: (id: string, updates: Partial<Property>) => Promise<void>;
   onDelete?: (prop: Property) => void;
+  onPostHometea?: (prop: NormalizedWarehouseProperty) => void;
   currentUser?: AuthUser | null;
   allItems?: NormalizedWarehouseProperty[];
   onSelectProperty?: (id: string) => void;
@@ -43,6 +45,7 @@ export default function WarehouseEditDrawer({
   onClose,
   onSave,
   onDelete,
+  onPostHometea,
   currentUser,
   allItems = [],
   onSelectProperty,
@@ -747,6 +750,18 @@ export default function WarehouseEditDrawer({
           {/* Giữa / Phải: Nút hành động */}
           <div className="flex items-center gap-2.5">
             {saveMessage && <span className="text-xs text-emerald-400 font-medium animate-fadeIn">{saveMessage}</span>}
+
+            {onPostHometea && item && (
+              <button
+                type="button"
+                onClick={() => onPostHometea(item)}
+                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-1.5 cursor-pointer"
+                title="Đăng trực tiếp lên Hometea"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Đăng lên Hometea</span>
+              </button>
+            )}
 
             <button
               onClick={handleSaveOnly}

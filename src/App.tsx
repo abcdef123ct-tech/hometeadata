@@ -36,6 +36,7 @@ import {
   PHAP_LY_PRESETS,
 } from "./utils/dataWarehouseUtils";
 import { safeFetchJson } from "./utils/apiClient";
+import { postToHometea } from "./utils/hometeaPost";
 import ConfigGuide from "./components/ConfigGuide";
 import PropertyFormModal from "./components/PropertyFormModal";
 import BulkFolderImportModal from "./components/BulkFolderImportModal";
@@ -159,6 +160,10 @@ export default function App() {
     null
   );
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Hometea postMessage posting state
+  const [hometeaPostingId, setHometeaPostingId] = useState<string | null>(null);
+  const [hometeaStatusMsg, setHometeaStatusMsg] = useState<string | null>(null);
 
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
@@ -535,34 +540,34 @@ export default function App() {
     }
   };
 
-  // Export properties to external system / file
-  const handleExportToChannel = async (itemsList: NormalizedWarehouseProperty[], target: "hometea" | "post_writer") => {
-    if (itemsList.length === 0) return;
-    setBulkActionLoading(true);
-    try {
-      const rows = itemsList.map(toVNguonXuatRow);
-      const res = await safeFetchJson<{ success: boolean; exportedCount?: number }>(
-        "/api/export-properties",
-        {
-          method: "POST",
-          headers: getAuthHeaders(true),
-          body: JSON.stringify({ target, rows, propertyIds: itemsList.map((x) => x.id) }),
-          credentials: "include",
+  // Post property to Hometea via window.open & postMessage
+  const handlePostToHometea = useCallback((item: NormalizedWarehouseProperty | Property) => {
+    const propId = item.id;
+    setHometeaPostingId(propId);
+    setHometeaStatusMsg("Đang chờ Hometea...");
+
+    postToHometea({
+      item,
+      getAuthHeaders: (includeJson) => getAuthHeaders(includeJson),
+      onStatusChange: (msg) => {
+        setHometeaStatusMsg(msg);
+        if (!msg) {
+          setHometeaPostingId(null);
         }
-      );
-      if (res.ok) {
-        showToast(`Đã xuất thành công ${res.data.exportedCount || itemsList.length} tin sang ${target.toUpperCase()}!`);
-        setSelectedIds(new Set());
+      },
+      onSuccess: (hometeaId, maTk) => {
+        showToast(`Đã đăng thành công [${maTk}] lên Hometea (ID: ${hometeaId})!`);
+        setHometeaPostingId(null);
+        setHometeaStatusMsg(null);
         setRefreshTrigger((prev) => prev + 1);
-      } else {
-        alert(`Lỗi khi xuất: ${res.error || "Không rõ nguyên nhân"}`);
-      }
-    } catch (err: any) {
-      alert("Lỗi kết nối khi xuất: " + err.message);
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
+      },
+      onError: (err) => {
+        alert("Lỗi Hometea: " + err);
+        setHometeaPostingId(null);
+        setHometeaStatusMsg(null);
+      },
+    });
+  }, [showToast]);
 
   // AI Batch Processing logic (runs 20 records sequentially)
   const handleRunAiBatchExtraction = async (itemsList: NormalizedWarehouseProperty[]) => {
@@ -1594,9 +1599,25 @@ export default function App() {
                                 </div>
                               </td>
 
-                              {/* Cột 6: Hành động (Duyệt + mở rộng + xóa) */}
+                              {/* Cột 6: Hành động (Đăng Hometea + Duyệt + mở rộng + xóa) */}
                               <td className="py-1 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={hometeaPostingId === it.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePostToHometea(it);
+                                    }}
+                                    className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-[10px] font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                    title="Đăng tin lên Hometea qua postMessage"
+                                  >
+                                    {hometeaPostingId === it.id ? (
+                                      <span>⏳ Đang chờ Hometea...</span>
+                                    ) : (
+                                      <span>🚀 Đăng Hometea</span>
+                                    )}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => setDrawerItemId(it.id)}
@@ -1740,6 +1761,10 @@ export default function App() {
                       e.stopPropagation();
                       setDeletingProperty(it.raw || (it as unknown as Property));
                     }}
+                    onPostHometea={(e) => {
+                      e.stopPropagation();
+                      handlePostToHometea(it);
+                    }}
                   />
                 ) : null)}
               </div>
@@ -1783,6 +1808,7 @@ export default function App() {
           onClose={() => setDrawerItemId(null)}
           onSave={handleSaveProperty}
           onDelete={handleDeleteProperty}
+          onPostHometea={handlePostToHometea}
           currentUser={currentUser}
           allItems={filteredItems}
           onSelectProperty={(id) => setDrawerItemId(id)}
