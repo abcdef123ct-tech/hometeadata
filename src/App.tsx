@@ -847,6 +847,16 @@ export default function App() {
     }
   };
 
+  // Bulk Post to Hometea for selected properties
+  const handleBulkPostToHometea = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const selectedItems = filteredItems.filter((it) => it && selectedIds.has(it.id));
+    if (selectedItems.length === 0) return;
+
+    const firstItem = selectedItems[0];
+    handlePostToHometea(firstItem);
+  }, [selectedIds, filteredItems, handlePostToHometea]);
+
   // Statistics counters
   const businessCounts = useMemo(() => {
     const counts = { nguon_tho: 0, da_ky: 0, da_ban: 0 };
@@ -888,7 +898,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none pb-12">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none pb-12 max-w-full overflow-x-hidden">
       
       {/* Toast Notification Banner */}
       {toastBanner && (
@@ -1266,6 +1276,16 @@ export default function App() {
                     <button
                       type="button"
                       disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={handleBulkPostToHometea}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                      title="Đăng tin đã chọn lên Hometea qua postMessage"
+                    >
+                      🚀 Đăng Hometea ({selectedIds.size})
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
                       onClick={handleBulkDeleteSelected}
                       className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 disabled:opacity-40 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                       title="Xóa tất cả các tin đã chọn"
@@ -1313,12 +1333,12 @@ export default function App() {
             ) : filteredItems.length === 0 ? (
               <div className="p-12 text-center text-slate-500">Trống</div>
             ) : viewMode === "table" ? (
-              <div className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-xl">
+              <div className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-xl max-w-full">
                 <div className="overflow-x-auto max-w-full">
                   <table
                     className="w-full text-left border-collapse text-xs"
                     id="warehouse-dense-table"
-                    style={{ tableLayout: "fixed", minWidth: "1350px" }}
+                    style={{ tableLayout: "fixed", minWidth: "1220px" }}
                   >
                     <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
                       <tr>
@@ -1330,11 +1350,11 @@ export default function App() {
                             className="rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer"
                           />
                         </th>
-                        <th className="py-3 px-3 w-[240px]">Tin (Mã & Địa chỉ)</th>
-                        <th className="py-3 px-3 w-[180px]">Thông số</th>
-                        <th className="py-3 px-3 w-[380px]">Dữ liệu bóc tách AI</th>
+                        <th className="py-3 px-3 w-[230px]">Tin (Mã & Địa chỉ)</th>
+                        <th className="py-3 px-3 w-[170px]">Thông số</th>
+                        <th className="py-3 px-3 w-[360px]">Dữ liệu bóc tách AI</th>
                         <th className="py-3 px-3 w-[130px]">Trạng thái</th>
-                        <th className="py-3 px-3 w-[250px] text-center">Hành động</th>
+                        <th className="py-3 px-3 w-[270px] text-center">Hành động</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/80">
@@ -1601,7 +1621,7 @@ export default function App() {
 
                               {/* Cột 6: Hành động (Đăng Hometea + Duyệt + mở rộng + xóa) */}
                               <td className="py-1 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center justify-center gap-1.5">
+                                <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                                   <button
                                     type="button"
                                     disabled={hometeaPostingId === it.id}
@@ -1609,7 +1629,7 @@ export default function App() {
                                       e.stopPropagation();
                                       handlePostToHometea(it);
                                     }}
-                                    className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-[10px] font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                    className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-[10px] font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0"
                                     title="Đăng tin lên Hometea qua postMessage"
                                   >
                                     {hometeaPostingId === it.id ? (
@@ -1621,7 +1641,7 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => setDrawerItemId(it.id)}
-                                    className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] font-extrabold shadow-sm transition-colors cursor-pointer"
+                                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] font-extrabold shadow-sm transition-colors cursor-pointer shrink-0"
                                   >
                                     Duyệt
                                   </button>
@@ -1631,7 +1651,7 @@ export default function App() {
                                       if (isInlineEditing) setInlineAiRowId(null);
                                       else openInlineAiEditor(it);
                                     }}
-                                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] cursor-pointer"
+                                    className="p-1 px-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] cursor-pointer shrink-0"
                                     title="Sửa nhanh bóc tách"
                                   >
                                     ✎
@@ -1642,7 +1662,7 @@ export default function App() {
                                       e.stopPropagation();
                                       setDeletingProperty(it.raw || (it as unknown as Property));
                                     }}
-                                    className="p-1 px-1.5 rounded bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[10px] font-bold cursor-pointer transition-colors"
+                                    className="p-1 px-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 text-[10px] font-bold cursor-pointer transition-colors shrink-0"
                                     title="Xóa tin này"
                                   >
                                     🗑️ Xóa
@@ -1796,6 +1816,30 @@ export default function App() {
             currentUser={currentUser}
             onBackToProperties={() => setActiveTab("properties")}
             onOpenMigrationModal={() => setIsMigrationModalOpen(true)}
+          />
+        )}
+
+        {/* TAB 5: HỒ SƠ CÁ NHÂN */}
+        {activeTab === "profile" && (
+          <UserProfileView
+            currentUser={currentUser}
+            properties={properties}
+            onBackToProperties={() => setActiveTab("properties")}
+            onAddNewProperty={() => {
+              setEditingProperty(null);
+              setIsFormOpen(true);
+            }}
+            onEditProperty={(prop) => {
+              setEditingProperty(prop);
+              setIsFormOpen(true);
+            }}
+            onDeleteProperty={handleDeleteProperty}
+            onViewProperty={(prop) => setDrawerItemId(prop.id)}
+            onPostHometea={handlePostToHometea}
+            onStatusChange={async (_e, prop, newStatus) => {
+              const mapped: BusinessStatusType = newStatus === "da_ban" ? "da_ban" : newStatus === "da_ky" ? "da_ky" : "nguon_tho";
+              await handleSaveProperty(prop.id, { trang_thai_kinh_doanh: mapped });
+            }}
           />
         )}
       </div>

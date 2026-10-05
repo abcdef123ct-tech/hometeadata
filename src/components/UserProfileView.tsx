@@ -30,6 +30,7 @@ interface UserProfileViewProps {
   onDeleteProperty: (property: Property) => void;
   onViewProperty: (property: Property) => void;
   onStatusChange: (e: React.MouseEvent, property: Property, status: PropertyStatus) => void;
+  onPostHometea?: (property: Property) => void;
   onProfileUpdated?: (updatedUser: AuthUser) => void;
 }
 
@@ -42,6 +43,7 @@ export default function UserProfileView({
   onDeleteProperty,
   onViewProperty,
   onStatusChange,
+  onPostHometea,
   onProfileUpdated,
 }: UserProfileViewProps) {
   // Tabs within Profile: 'my_properties' or 'security_profile'
@@ -385,6 +387,10 @@ export default function UserProfileView({
                   onDelete={(e) => {
                     e.stopPropagation();
                     onDeleteProperty(prop);
+                  }}
+                  onPostHometea={(e) => {
+                    e.stopPropagation();
+                    onPostHometea?.(prop);
                   }}
                   onClick={() => onViewProperty(prop)}
                   onStatusChange={(e, status) => onStatusChange(e, prop, status)}

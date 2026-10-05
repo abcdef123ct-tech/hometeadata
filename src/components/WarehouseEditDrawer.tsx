@@ -725,7 +725,7 @@ export default function WarehouseEditDrawer({
         </div>
 
         {/* CHÂN TRANG CỐ ĐỊNH */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-t border-slate-800 bg-slate-950 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-t border-slate-800 bg-slate-950 shrink-0 min-w-0">
           {/* Bên trái: Hometea status (CHỈ ĐỌC) */}
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="font-medium text-slate-300">Hometea:</span>
@@ -744,29 +744,29 @@ export default function WarehouseEditDrawer({
                 ? "Nháp"
                 : "Chưa đăng"}
             </span>
-            {hometeaId && <span className="font-mono text-slate-500">(ID: {hometeaId})</span>}
+            {hometeaId && <span className="font-mono text-slate-500 truncate max-w-[150px]">(ID: {hometeaId})</span>}
           </div>
 
           {/* Giữa / Phải: Nút hành động */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             {saveMessage && <span className="text-xs text-emerald-400 font-medium animate-fadeIn">{saveMessage}</span>}
 
             {onPostHometea && item && (
               <button
                 type="button"
                 onClick={() => onPostHometea(item)}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-1.5 cursor-pointer"
-                title="Đăng trực tiếp lên Hometea"
+                className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-extrabold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-1.5 cursor-pointer shrink-0"
+                title="Đăng trực tiếp tin này lên Hometea"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Đăng lên Hometea</span>
+                <span>🚀 Đăng lên Hometea</span>
               </button>
             )}
 
             <button
               onClick={handleSaveOnly}
               disabled={isSaving || isViewer}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
             >
               Lưu
             </button>
@@ -774,7 +774,7 @@ export default function WarehouseEditDrawer({
             <button
               onClick={handleSaveAndReady}
               disabled={isSaving || isViewer}
-              className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-50"
+              className="px-4 sm:px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
             >
               <span>Lưu & xác nhận → tin kế</span>
             </button>

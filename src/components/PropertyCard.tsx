@@ -266,11 +266,11 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             <button
               type="button"
               onClick={onPostHometea}
-              className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
-              title="Đăng lên Hometea"
+              className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-all shadow-sm shrink-0"
+              title="Đăng tin trực tiếp lên Hometea"
             >
               <Send className="w-3 h-3" />
-              Đăng Hometea
+              <span>🚀 Đăng Hometea</span>
             </button>
           )}
           <button
