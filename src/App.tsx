@@ -1318,7 +1318,7 @@ export default function App() {
                   <table
                     className="w-full text-left border-collapse text-xs"
                     id="warehouse-dense-table"
-                    style={{ tableLayout: "fixed", minWidth: "1200px" }}
+                    style={{ tableLayout: "fixed", minWidth: "1350px" }}
                   >
                     <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
                       <tr>
@@ -1330,11 +1330,11 @@ export default function App() {
                             className="rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer"
                           />
                         </th>
-                        <th className="py-3 px-3 w-[260px]">Tin (Mã & Địa chỉ)</th>
-                        <th className="py-3 px-3 w-[220px]">Thông số</th>
-                        <th className="py-3 px-3 w-[420px]">Dữ liệu bóc tách AI</th>
-                        <th className="py-3 px-3 w-[150px]">Trạng thái</th>
-                        <th className="py-3 px-3 w-[120px] text-center">Hành động</th>
+                        <th className="py-3 px-3 w-[240px]">Tin (Mã & Địa chỉ)</th>
+                        <th className="py-3 px-3 w-[180px]">Thông số</th>
+                        <th className="py-3 px-3 w-[380px]">Dữ liệu bóc tách AI</th>
+                        <th className="py-3 px-3 w-[130px]">Trạng thái</th>
+                        <th className="py-3 px-3 w-[250px] text-center">Hành động</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/80">
