@@ -61,6 +61,8 @@ export interface BulkPropertyItem {
   sdt_nguon: string; // internal only
   hoa_hong: string;
   toa_do: string;
+  link_thien_khoi?: string;
+  link_ban_do?: string;
   ngay_lay?: string | null; // ISO date parsed from "Ngay lay" in .txt
   ngay_lay_raw?: string;
 
@@ -681,46 +683,50 @@ function splitHouseNumberAndStreet(rawAddress: string): { so_nha: string; duong:
  * Parse "Ngay lay" (or "Ngày lấy") date string from .txt into ISO timestamp
  */
 export function parseNgayLayDate(rawDateStr: string | undefined | null): string | null {
-  if (!rawDateStr || !rawDateStr.trim()) return null;
+  if (!rawDateStr || typeof rawDateStr !== "string" || !rawDateStr.trim()) return null;
   const s = rawDateStr.trim();
 
-  // Pattern 0: HH:mm[:ss] DD/MM/YYYY or HH:mm[:ss] DD-MM-YYYY (e.g. "20:45:13 7/7/2026")
+  let day = 0, month = 0, year = 0;
+
+  // Pattern 0: HH:mm[:ss] DD/MM/YYYY or HH:mm[:ss] DD-MM-YYYY (e.g. "20:45:13 17/6/2026")
   const timeFirstMatch = s.match(
     /^([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?\s*(?:-\s*)?([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
   );
   if (timeFirstMatch) {
-    const hour = parseInt(timeFirstMatch[1], 10);
-    const min = parseInt(timeFirstMatch[2], 10);
-    const sec = timeFirstMatch[3] ? parseInt(timeFirstMatch[3], 10) : 0;
-    const day = parseInt(timeFirstMatch[4], 10);
-    const month = parseInt(timeFirstMatch[5], 10);
-    const year = parseInt(timeFirstMatch[6], 10);
-    const dt = new Date(year, month - 1, day, hour, min, sec);
-    if (!isNaN(dt.getTime())) return dt.toISOString();
+    day = parseInt(timeFirstMatch[4], 10);
+    month = parseInt(timeFirstMatch[5], 10);
+    year = parseInt(timeFirstMatch[6], 10);
+  } else {
+    // Pattern 1: DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = s.match(
+      /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
+    );
+    if (dmyMatch) {
+      day = parseInt(dmyMatch[1], 10);
+      month = parseInt(dmyMatch[2], 10);
+      year = parseInt(dmyMatch[3], 10);
+    } else {
+      // Pattern 2: YYYY-MM-DD
+      const isoMatch = s.match(/^([0-9]{4})[/-]([0-9]{1,2})[/-]([0-9]{1,2})/);
+      if (isoMatch) {
+        year = parseInt(isoMatch[1], 10);
+        month = parseInt(isoMatch[2], 10);
+        day = parseInt(isoMatch[3], 10);
+      } else {
+        const parsed = new Date(s);
+        if (isNaN(parsed.getTime())) return null;
+        year = parsed.getFullYear();
+        month = parsed.getMonth() + 1;
+        day = parsed.getDate();
+      }
+    }
   }
 
-  // Pattern 1: DD/MM/YYYY [HH:mm[:ss]] or DD-MM-YYYY [HH:mm[:ss]]
-  const dmyMatch = s.match(
-    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s*(?:-\s*)?([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
-  );
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10);
-    const year = parseInt(dmyMatch[3], 10);
-    const hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
-    const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
-    const sec = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
-    const dt = new Date(year, month - 1, day, hour, min, sec);
-    if (!isNaN(dt.getTime())) return dt.toISOString();
-  }
-
-  // Pattern 2: YYYY-MM-DD or ISO
-  const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) {
-    return parsed.toISOString();
-  }
-
-  return null;
+  if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) return null;
+  const yyyy = String(year);
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
@@ -873,6 +879,30 @@ export function parsePropertyTxtFile(txtContent: string) {
   // 9. Mô tả thô (mo_ta_tho) - lưu nguyên bản nội bộ
   const mo_ta_tho = raw;
 
+  // 10. Link Thiên Khôi (link_thien_khoi)
+  let link_thien_khoi = "";
+  const urlMatch1 = combinedMeta.match(/(?:URL|Link|Nguồn Thiên Khôi|Proptech)\s*:\s*([^\n\r]+)/i);
+  if (urlMatch1) {
+    const m = urlMatch1[1].match(/https?:\/\/proptech\.thienkhoi\.com\/[^\s\r\n]+/i);
+    if (m) link_thien_khoi = m[0].trim().replace(/[.,;)\n\r\]"]+$/, "");
+  }
+  if (!link_thien_khoi) {
+    const m = raw.match(/https?:\/\/proptech\.thienkhoi\.com\/[^\s\r\n]+/i);
+    if (m) link_thien_khoi = m[0].trim().replace(/[.,;)\n\r\]"]+$/, "");
+  }
+
+  // 11. Link Bản đồ (link_ban_do)
+  let link_ban_do = "";
+  const mapMatch1 = combinedMeta.match(/(?:Dinh vi|Định vị|Bản đồ|Google Maps|Map)\s*:\s*([^\n\r]+)/i);
+  if (mapMatch1) {
+    const m = mapMatch1[1].match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)\/[^\s\r\n]+/i);
+    if (m) link_ban_do = m[0].trim().replace(/[.,;)\n\r\]"]+$/, "");
+  }
+  if (!link_ban_do) {
+    const m = raw.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)\/[^\s\r\n]+/i);
+    if (m) link_ban_do = m[0].trim().replace(/[.,;)\n\r\]"]+$/, "");
+  }
+
   return {
     ma_tk_txt,
     ngay_lay,
@@ -883,6 +913,8 @@ export function parsePropertyTxtFile(txtContent: string) {
     gia_txt_display,
     hoa_hong,
     toa_do,
+    link_thien_khoi,
+    link_ban_do,
     trang_thai_nguon,
     phuong_txt,
     mo_ta_tho,

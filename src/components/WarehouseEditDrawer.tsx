@@ -9,6 +9,8 @@ import {
   Sparkles,
   MoreVertical,
   Send,
+  ExternalLink,
+  MapPin,
 } from "lucide-react";
 import {
   Property,
@@ -24,6 +26,7 @@ import {
   LOAI_VI_TRI_OPTIONS,
   HUONG_OPTIONS,
   PHAP_LY_PRESETS,
+  formatNgayLayDisplay,
 } from "../utils/dataWarehouseUtils";
 import SmartImage from "./SmartImage";
 
@@ -310,6 +313,70 @@ export default function WarehouseEditDrawer({
             <span className="font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-bold shrink-0">
               {maTk || "MÃ MỚI"}
             </span>
+
+            {/* Ngày lấy cạnh mã TK */}
+            {(() => {
+              const nl = formatNgayLayDisplay(item?.ngay_lay || item?.raw?.ngay_lay);
+              if (!nl.formatted) return null;
+              return (
+                <span
+                  className={`text-xs font-medium shrink-0 ${
+                    nl.isOlderThan60Days ? "text-amber-300/90 font-semibold" : "text-slate-400"
+                  }`}
+                  title="Ngày lấy từ Thiên Khôi"
+                >
+                  Ngày lấy: {nl.formatted}
+                </span>
+              );
+            })()}
+
+            {/* Icon link Thiên Khôi */}
+            {item?.link_thien_khoi ? (
+              <a
+                href={item.link_thien_khoi}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-2 py-0.5 rounded-lg bg-sky-950/80 hover:bg-sky-900 border border-sky-600/50 text-sky-300 hover:text-sky-100 text-xs font-semibold flex items-center gap-1 transition-all shrink-0 cursor-pointer shadow-xs"
+                title="Mở nguồn Thiên Khôi"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Thiên Khôi</span>
+              </a>
+            ) : (
+              <span
+                onClick={(e) => e.stopPropagation()}
+                className="px-2 py-0.5 rounded-lg bg-slate-950/40 border border-slate-800 text-slate-600 opacity-40 text-xs font-semibold flex items-center gap-1 cursor-not-allowed shrink-0"
+                title="Chưa có link"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Thiên Khôi</span>
+              </span>
+            )}
+
+            {/* Icon link Bản đồ */}
+            {item?.link_ban_do ? (
+              <a
+                href={item.link_ban_do}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-2 py-0.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/50 text-emerald-300 hover:text-emerald-100 text-xs font-semibold flex items-center gap-1 transition-all shrink-0 cursor-pointer shadow-xs"
+                title="Mở Google Maps"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Bản đồ</span>
+              </a>
+            ) : (
+              <span
+                onClick={(e) => e.stopPropagation()}
+                className="px-2 py-0.5 rounded-lg bg-slate-950/40 border border-slate-800 text-slate-600 opacity-40 text-xs font-semibold flex items-center gap-1 cursor-not-allowed shrink-0"
+                title="Chưa có link"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Bản đồ</span>
+              </span>
+            )}
             <div className="flex flex-col min-w-0">
               <h2 className="text-sm sm:text-base font-bold text-slate-100 truncate" title={cleanAddress}>
                 {cleanAddress}
@@ -697,11 +764,22 @@ export default function WarehouseEditDrawer({
               className="flex-1 overflow-y-auto rounded-xl bg-slate-900/80 border border-slate-800 p-4 text-xs sm:text-sm text-slate-300 font-mono leading-relaxed space-y-3 select-text"
             >
               {moTaTho ? (
-                maskText(moTaTho).split("\n").map((line, idx) => (
-                  <div key={idx} data-evidence-key={`line-${idx}`} className="py-0.5 transition-colors rounded px-1">
-                    {line}
-                  </div>
-                ))
+                maskText(moTaTho)
+                  .split("\n")
+                  .filter((line) => {
+                    const trimmed = line.trim();
+                    if (/^(?:URL|Link|Nguồn Thiên Khôi|Proptech)\s*:/i.test(trimmed)) return false;
+                    if (/^(?:Dinh vi|Định vị|Tọa độ|Toa do|Vị trí bản đồ)\s*:/i.test(trimmed)) return false;
+                    if (/^(?:Ngay lay|Ngày lấy|Thời gian lấy|Thoi gian lay)\s*:/i.test(trimmed)) return false;
+                    if (/https?:\/\/proptech\.thienkhoi\.com/i.test(trimmed)) return false;
+                    if (/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)/i.test(trimmed)) return false;
+                    return true;
+                  })
+                  .map((line, idx) => (
+                    <div key={idx} data-evidence-key={`line-${idx}`} className="py-0.5 transition-colors rounded px-1">
+                      {line}
+                    </div>
+                  ))
               ) : (
                 <p className="text-slate-600 italic">Không có nội dung mô tả gốc.</p>
               )}

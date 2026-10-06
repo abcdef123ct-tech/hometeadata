@@ -5,6 +5,7 @@ import {
   AlertCircle,
   RefreshCw,
   MapPin,
+  ExternalLink,
   LayoutList,
   LayoutGrid,
   CheckCircle2,
@@ -34,6 +35,7 @@ import {
   LOAI_VI_TRI_OPTIONS,
   HUONG_OPTIONS,
   PHAP_LY_PRESETS,
+  formatNgayLayDisplay,
 } from "./utils/dataWarehouseUtils";
 import { safeFetchJson } from "./utils/apiClient";
 import { postToHometea } from "./utils/hometeaPost";
@@ -92,6 +94,10 @@ export default function App() {
   const [filterAiState, setFilterAiState] = useState<
     "all" | "needs_confirm" | "extracted" | "unextracted"
   >("all");
+  const [filterNgayLay, setFilterNgayLay] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>(() => {
+    return localStorage.getItem("warehouse_sort_by") || "ngay_lay_desc";
+  });
 
   // Selection for Bulk Actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -765,9 +771,9 @@ export default function App() {
     return Array.from(s).sort();
   }, [normalizedProperties]);
 
-  // Multi-dimensional filters (Search Query + Ward + AI status + completeness)
+  // Multi-dimensional filters (Search Query + Ward + AI status + completeness) & Sorting
   const filteredItems = useMemo(() => {
-    return normalizedProperties.filter((it) => {
+    const itemsArr = normalizedProperties.filter((it) => {
       // 1. Text search index
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -815,9 +821,79 @@ export default function App() {
         return false;
       }
 
+      // 7. Chip lọc nhanh Ngày lấy
+      if (filterNgayLay !== "all") {
+        const nl = formatNgayLayDisplay(it.ngay_lay || it.raw?.ngay_lay);
+        if (!nl.dateObj) return false;
+        const now = new Date();
+        const nowUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+        const dUtc = Date.UTC(nl.dateObj.getFullYear(), nl.dateObj.getMonth(), nl.dateObj.getDate());
+        const diffDays = Math.floor((nowUtc - dUtc) / (1000 * 60 * 60 * 24));
+
+        if (filterNgayLay === "7days" && diffDays > 7) return false;
+        if (filterNgayLay === "30days" && diffDays > 30) return false;
+        if (filterNgayLay === "older60days" && diffDays <= 60) return false;
+      }
+
       return true;
     });
-  }, [normalizedProperties, searchQuery, filterBusinessStatus, filterProcessingStatus, filterDistrict, filterCompleteness, filterAiState]);
+
+    return itemsArr.sort((a, b) => {
+      const getCreatedAtTime = (item: NormalizedWarehouseProperty) => {
+        const raw = item.raw?.created_at || item.raw?.ngay_nhap;
+        if (!raw) return 0;
+        const t = new Date(raw).getTime();
+        return isNaN(t) ? 0 : t;
+      };
+
+      if (sortBy === "ngay_lay_desc" || sortBy === "ngay_lay_asc") {
+        const nlA = formatNgayLayDisplay(a.ngay_lay || a.raw?.ngay_lay);
+        const nlB = formatNgayLayDisplay(b.ngay_lay || b.raw?.ngay_lay);
+
+        const timeA = nlA.dateObj ? nlA.dateObj.getTime() : null;
+        const timeB = nlB.dateObj ? nlB.dateObj.getTime() : null;
+
+        // Dòng không có ngày lấy luôn xếp CUỐI ở cả hai chiều
+        if (timeA === null && timeB === null) {
+          return getCreatedAtTime(b) - getCreatedAtTime(a);
+        }
+        if (timeA === null) return 1;
+        if (timeB === null) return -1;
+
+        if (timeA !== timeB) {
+          return sortBy === "ngay_lay_desc" ? timeB - timeA : timeA - timeB;
+        }
+
+        // Cùng một ngày thì xếp tiếp theo created_at
+        return getCreatedAtTime(b) - getCreatedAtTime(a);
+      }
+
+      if (sortBy === "created_at_desc") {
+        return getCreatedAtTime(b) - getCreatedAtTime(a);
+      }
+      if (sortBy === "created_at_asc") {
+        return getCreatedAtTime(a) - getCreatedAtTime(b);
+      }
+      if (sortBy === "gia_desc") {
+        return (b.gia || 0) - (a.gia || 0);
+      }
+      if (sortBy === "gia_asc") {
+        return (a.gia || 0) - (b.gia || 0);
+      }
+
+      return 0;
+    });
+  }, [
+    normalizedProperties,
+    searchQuery,
+    filterBusinessStatus,
+    filterProcessingStatus,
+    filterDistrict,
+    filterCompleteness,
+    filterAiState,
+    filterNgayLay,
+    sortBy,
+  ]);
 
   // Selection toggle logic
   const toggleSelectOne = (id: string, e: React.MouseEvent) => {
@@ -1101,6 +1177,73 @@ export default function App() {
                   <option value="extracted">Đã bóc tách AI</option>
                   <option value="needs_confirm">Cần xác nhận (NULL / Tin cậy thấp)</option>
                 </select>
+
+                {/* Sắp xếp Filter */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSortBy(val);
+                    localStorage.setItem("warehouse_sort_by", val);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-amber-950/50 border border-amber-500/40 text-xs text-amber-300 font-bold outline-none cursor-pointer shadow-xs"
+                >
+                  <option value="ngay_lay_desc">Ngày lấy: mới nhất trước</option>
+                  <option value="ngay_lay_asc">Ngày lấy: cũ nhất trước</option>
+                  <option value="created_at_desc">Ngày tạo: mới nhất</option>
+                  <option value="created_at_asc">Ngày tạo: cũ nhất</option>
+                  <option value="gia_desc">Giá: cao đến thấp</option>
+                  <option value="gia_asc">Giá: thấp đến cao</option>
+                </select>
+
+                {/* Chip lọc nhanh Ngày lấy */}
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-400 px-1.5">Lấy nguồn:</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterNgayLay("all")}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                      filterNgayLay === "all"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Tất cả
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterNgayLay("7days")}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                      filterNgayLay === "7days"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    7 ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterNgayLay("30days")}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                      filterNgayLay === "30days"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    30 ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterNgayLay("older60days")}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                      filterNgayLay === "older60days"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Cũ hơn 60 ngày
+                  </button>
+                </div>
 
                 {/* Refresh Button */}
                 <button
@@ -1413,18 +1556,32 @@ export default function App() {
                                 />
                               </td>
 
-                              {/* Cột 2: Tin (Dòng 1 địa chỉ sạch, dòng 2 mã TK + phường) */}
+                              {/* Cột 2: Tin (Dòng 1 địa chỉ sạch, dòng 2 mã TK + phường + Ngày lấy) */}
                               <td className="py-1 px-3 truncate">
                                 <div className="font-bold text-slate-100 truncate text-xs" title={it.cleanAddress || it.dia_chi || it.name || it.raw?.name || ""}>
                                   {it.cleanAddress || it.dia_chi || it.name || it.raw?.name || it.ma_tk || "Tin Bất Động Sản"}
                                 </div>
-                                <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                                <div className="flex items-center gap-1.5 mt-0.5 text-[10px] flex-wrap">
                                   <span className="font-mono px-1 rounded bg-slate-950 border border-slate-800 text-amber-300 font-bold shrink-0">
                                     {it.ma_tk || "MÃ MỚI"}
                                   </span>
                                   <span className="text-slate-400 font-medium truncate">
                                     {it.phuong || "Thiếu phường"}
                                   </span>
+                                  {(() => {
+                                    const nl = formatNgayLayDisplay(it.ngay_lay || it.raw?.ngay_lay);
+                                    if (!nl.formatted) return null;
+                                    return (
+                                      <span
+                                        title="Ngày lấy từ Thiên Khôi"
+                                        className={`text-[10px] ${
+                                          nl.isOlderThan60Days ? "text-amber-200/90 font-medium" : "text-slate-400 font-normal"
+                                        } shrink-0`}
+                                      >
+                                        Lấy {nl.formatted}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </td>
 
@@ -1596,6 +1753,50 @@ export default function App() {
                                   >
                                     {it.imageCount} ảnh
                                   </button>
+
+                                  {/* Icon link Thiên Khôi */}
+                                  {it.link_thien_khoi ? (
+                                    <a
+                                      href={it.link_thien_khoi}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded bg-sky-950/90 hover:bg-sky-900 border border-sky-600/60 text-sky-300 hover:text-sky-100 transition-colors shrink-0 shadow-xs flex items-center justify-center cursor-pointer"
+                                      title="Mở nguồn Thiên Khôi"
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  ) : (
+                                    <span
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded bg-slate-950/40 border border-slate-800/80 text-slate-600 opacity-40 cursor-not-allowed shrink-0 flex items-center justify-center"
+                                      title="Chưa có link"
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </span>
+                                  )}
+
+                                  {/* Icon link Bản đồ */}
+                                  {it.link_ban_do ? (
+                                    <a
+                                      href={it.link_ban_do}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-300 hover:text-emerald-100 transition-colors shrink-0 shadow-xs flex items-center justify-center cursor-pointer"
+                                      title="Mở Google Maps"
+                                    >
+                                      <MapPin className="w-3 h-3" />
+                                    </a>
+                                  ) : (
+                                    <span
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded bg-slate-950/40 border border-slate-800/80 text-slate-600 opacity-40 cursor-not-allowed shrink-0 flex items-center justify-center"
+                                      title="Chưa có link"
+                                    >
+                                      <MapPin className="w-3 h-3" />
+                                    </span>
+                                  )}
 
                                   {/* Biểu tượng cảnh báo ⚠ nếu có dữ liệu lệch */}
                                   {hasWarning && (

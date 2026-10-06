@@ -419,6 +419,8 @@ export default function BulkFolderImportModal({
           gia_txt_display: "",
           hoa_hong: "3%",
           toa_do: "",
+          link_thien_khoi: "",
+          link_ban_do: "",
           trang_thai_nguon: "đã bổ sung" as SourceStatusType,
           phuong_txt: "",
           mo_ta_tho: "",
@@ -517,6 +519,8 @@ export default function BulkFolderImportModal({
           sdt_nguon: txtMeta.sdt_nguon,
           hoa_hong: txtMeta.hoa_hong || "3%",
           toa_do: txtMeta.toa_do,
+          link_thien_khoi: txtMeta.link_thien_khoi || "",
+          link_ban_do: txtMeta.link_ban_do || "",
           ngay_lay: txtMeta.ngay_lay,
           ngay_lay_raw: txtMeta.ngay_lay_raw,
           images: inspectedImages,
@@ -1258,6 +1262,12 @@ export default function BulkFolderImportModal({
                 sdt_nguon: item.sdt_nguon,
                 hoa_hong: item.hoa_hong,
                 toa_do: item.toa_do,
+                link_thien_khoi: (item.existingRecord?.link_thien_khoi?.trim())
+                  ? item.existingRecord.link_thien_khoi
+                  : item.link_thien_khoi,
+                link_ban_do: (item.existingRecord?.link_ban_do?.trim())
+                  ? item.existingRecord.link_ban_do
+                  : item.link_ban_do,
                 ngay_lay: item.ngay_lay,
                 ngay_lay_raw: item.ngay_lay_raw,
                 anh: anhMetadata,

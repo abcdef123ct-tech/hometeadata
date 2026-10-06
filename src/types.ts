@@ -183,6 +183,8 @@ export interface Property {
   moi_gioi_nguon?: string;
   sdt_nguon?: string;
   hoa_hong?: string;
+  link_thien_khoi?: string | null;
+  link_ban_do?: string | null;
 
   toa_do?: string;
   anh?: PropertyImageEntry[] | any;

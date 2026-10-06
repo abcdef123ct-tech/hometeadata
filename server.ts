@@ -2414,35 +2414,44 @@ ALTER TABLE chu_nha_can_ban ADD COLUMN IF NOT EXISTS district text;
 function parseServerNgayLayDate(rawDateStr: string | undefined | null): string | null {
   if (!rawDateStr || typeof rawDateStr !== "string" || !rawDateStr.trim()) return null;
   const s = rawDateStr.trim();
+  let day = 0, month = 0, year = 0;
+
   const timeFirstMatch = s.match(
     /^([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?\s*(?:-\s*)?([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
   );
   if (timeFirstMatch) {
-    const hour = parseInt(timeFirstMatch[1], 10);
-    const min = parseInt(timeFirstMatch[2], 10);
-    const sec = timeFirstMatch[3] ? parseInt(timeFirstMatch[3], 10) : 0;
-    const day = parseInt(timeFirstMatch[4], 10);
-    const month = parseInt(timeFirstMatch[5], 10);
-    const year = parseInt(timeFirstMatch[6], 10);
-    const dt = new Date(year, month - 1, day, hour, min, sec);
-    if (!isNaN(dt.getTime())) return dt.toISOString();
+    day = parseInt(timeFirstMatch[4], 10);
+    month = parseInt(timeFirstMatch[5], 10);
+    year = parseInt(timeFirstMatch[6], 10);
+  } else {
+    const dmyMatch = s.match(
+      /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})/
+    );
+    if (dmyMatch) {
+      day = parseInt(dmyMatch[1], 10);
+      month = parseInt(dmyMatch[2], 10);
+      year = parseInt(dmyMatch[3], 10);
+    } else {
+      const isoMatch = s.match(/^([0-9]{4})[/-]([0-9]{1,2})[/-]([0-9]{1,2})/);
+      if (isoMatch) {
+        year = parseInt(isoMatch[1], 10);
+        month = parseInt(isoMatch[2], 10);
+        day = parseInt(isoMatch[3], 10);
+      } else {
+        const parsed = new Date(s);
+        if (isNaN(parsed.getTime())) return null;
+        year = parsed.getFullYear();
+        month = parsed.getMonth() + 1;
+        day = parsed.getDate();
+      }
+    }
   }
-  const dmyMatch = s.match(
-    /^([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})(?:\s*(?:-\s*)?([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?/
-  );
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10);
-    const year = parseInt(dmyMatch[3], 10);
-    const hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
-    const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
-    const sec = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
-    const dt = new Date(year, month - 1, day, hour, min, sec);
-    if (!isNaN(dt.getTime())) return dt.toISOString();
-  }
-  const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString();
-  return null;
+
+  if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) return null;
+  const yyyy = String(year);
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function toNumericOrNull(val: any): number | null {

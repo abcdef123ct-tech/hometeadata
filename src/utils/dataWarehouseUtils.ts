@@ -220,6 +220,9 @@ export interface NormalizedWarehouseProperty {
   sdt_nguon: string;
   hoa_hong: string;
   mo_ta_tho: string;
+  link_thien_khoi: string;
+  link_ban_do: string;
+  ngay_lay: string | null;
 
   // Cờ kiểm tra chất lượng dữ liệu
   isAbnormalPricePerM2: boolean;
@@ -227,6 +230,89 @@ export interface NormalizedWarehouseProperty {
   needsAreaReview: boolean;
   needsAreaLightCheck: boolean;
   areaReviewReason?: string;
+}
+
+/**
+ * Trích xuất URL Thiên Khôi từ text (vd: https://proptech.thienkhoi.com/...)
+ */
+export function extractLinkThienKhoi(text: string | null | undefined): string {
+  if (!text) return "";
+  const match = text.match(/https?:\/\/proptech\.thienkhoi\.com\/[^\s\r\n]+/i);
+  if (!match) return "";
+  let url = match[0].trim();
+  url = url.replace(/[.,;)\n\r\]"]+$/, "");
+  return url;
+}
+
+/**
+ * Trích xuất URL Google Maps / Định vị từ text
+ */
+export function extractLinkBanDo(text: string | null | undefined): string {
+  if (!text) return "";
+  const match =
+    text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)\/[^\s\r\n]+/i) ||
+    text.match(/https?:\/\/[^\s\r\n]*google\.com\/maps[^\s\r\n]*/i) ||
+    text.match(/https?:\/\/maps\.app\.goo\.gl\/[^\s\r\n]+/i);
+  if (!match) return "";
+  let url = match[0].trim();
+  url = url.replace(/[.,;)\n\r\]"]+$/, "");
+  return url;
+}
+
+/**
+ * Định dạng ngay_lay thành chuỗi dd/MM/yyyy và tính số ngày đã trôi qua
+ */
+export function formatNgayLayDisplay(dateVal: string | null | undefined): {
+  formatted: string;
+  isOlderThan60Days: boolean;
+  dateObj: Date | null;
+} {
+  if (!dateVal || typeof dateVal !== "string" || !dateVal.trim()) {
+    return { formatted: "", isOlderThan60Days: false, dateObj: null };
+  }
+
+  const s = dateVal.trim();
+  let d: Date | null = null;
+
+  // Pattern A: YYYY-MM-DD hoặc ISO string
+  const isoMatch = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day = parseInt(isoMatch[3], 10);
+    d = new Date(year, month - 1, day);
+  } else {
+    // Pattern B: DD/MM/YYYY hoặc DD-MM-YYYY
+    const dmyMatch = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    if (dmyMatch) {
+      const day = parseInt(dmyMatch[1], 10);
+      const month = parseInt(dmyMatch[2], 10);
+      const year = parseInt(dmyMatch[3], 10);
+      d = new Date(year, month - 1, day);
+    } else {
+      const parsed = new Date(s);
+      if (!isNaN(parsed.getTime())) {
+        d = parsed;
+      }
+    }
+  }
+
+  if (!d || isNaN(d.getTime())) {
+    return { formatted: "", isOlderThan60Days: false, dateObj: null };
+  }
+
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const formatted = `${dd}/${mm}/${yyyy}`;
+
+  const now = new Date();
+  const nowUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const dUtc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.floor((nowUtc - dUtc) / (1000 * 60 * 60 * 24));
+  const isOlderThan60Days = diffDays > 60;
+
+  return { formatted, isOlderThan60Days, dateObj: d };
 }
 
 /**
@@ -618,6 +704,26 @@ export function normalizePropertyRecord(
 
   const toa_do = (safeProp.toa_do || parsedLegacy.googleMapsUrl || safeProp.website_link || "").trim();
 
+  // Links nội bộ: Thiên Khôi & Bản đồ (Trích xuất từ prop hoặc regex fallback từ content)
+  let link_thien_khoi = (safeProp.link_thien_khoi || "").trim();
+  if (!link_thien_khoi) {
+    link_thien_khoi = extractLinkThienKhoi(rawContent) || extractLinkThienKhoi(mo_ta_tho);
+  }
+
+  let link_ban_do = (safeProp.link_ban_do || "").trim();
+  if (!link_ban_do) {
+    link_ban_do = extractLinkBanDo(rawContent) || extractLinkBanDo(mo_ta_tho) || extractLinkBanDo(toa_do);
+  }
+
+  // Ngày lấy nguồn từ Thiên Khôi
+  let ngay_lay = (safeProp.ngay_lay || "").trim() || null;
+  if (!ngay_lay) {
+    const nlMatch = (rawContent || "").match(/(?:Ngày\s*lấy|Ngay\s*lay)\s*:\s*([^\n\r]+)/i);
+    if (nlMatch) {
+      ngay_lay = nlMatch[1].trim();
+    }
+  }
+
   // 7.5. Các trường Bóc tách bằng AI (Chỉ lấy từ dữ liệu đã bóc tách / sửa tay, không tự đoán)
   const nguon_trich_xuat: NguonTrichXuatMap =
     safeProp.nguon_trich_xuat && typeof safeProp.nguon_trich_xuat === "object"
@@ -918,6 +1024,9 @@ export function normalizePropertyRecord(
     sdt_nguon,
     hoa_hong,
     mo_ta_tho,
+    link_thien_khoi,
+    link_ban_do,
+    ngay_lay,
     isAbnormalPricePerM2,
     abnormalPriceReason,
     needsAreaReview: areaCheck.needsReview,
