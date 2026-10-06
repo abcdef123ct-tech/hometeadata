@@ -134,7 +134,7 @@ export default function UserManagementView({ currentUser, onBackToProperties }: 
 
     const isFullEmail = rawInput.includes("@");
     const normalizedIdentifier = rawInput.toLowerCase();
-    const effectiveEmail = isFullEmail ? normalizedIdentifier : `${normalizedIdentifier}@nguonnhapk.local`;
+    const effectiveEmail = isFullEmail ? normalizedIdentifier : `${normalizedIdentifier}@hometeadata.local`;
     const defaultName = createFullName.trim() || (isFullEmail ? normalizedIdentifier.split("@")[0] : rawInput);
 
     try {
@@ -677,13 +677,13 @@ ON CONFLICT (id) DO UPDATE SET
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                              {u.email && u.email.endsWith("@nguonnhapk.local") ? (
+                              {u.email && (u.email.endsWith("@hometeadata.local") || u.email.endsWith("@nguonnhapk.local")) ? (
                                 <>
                                   <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-mono">
-                                    {u.email.replace("@nguonnhapk.local", "")}
+                                    {u.email.replace(/@(hometeadata|nguonnhapk)\.local$/i, "")}
                                   </span>
                                   <span className="text-[10px] custom-text-secondary font-mono opacity-70">
-                                    (@nguonnhapk.local)
+                                    (@hometeadata.local)
                                   </span>
                                 </>
                               ) : (
@@ -821,7 +821,7 @@ ON CONFLICT (id) DO UPDATE SET
                   />
                 </div>
                 <p className="text-[11px] custom-text-secondary">
-                  Chỉ cần nhập tên đăng nhập (không cần @). Hệ thống tự ghép đuôi <span className="font-mono text-amber-500">@nguonnhapk.local</span>.
+                  Chỉ cần nhập tên đăng nhập (không cần @). Hệ thống tự ghép đuôi <span className="font-mono text-amber-500">@hometeadata.local</span>.
                 </p>
               </div>
 
@@ -985,8 +985,8 @@ ON CONFLICT (id) DO UPDATE SET
                   type="text"
                   disabled
                   value={
-                    editingUser.email && editingUser.email.endsWith("@nguonnhapk.local")
-                      ? `${editingUser.email.replace("@nguonnhapk.local", "")} (@nguonnhapk.local)`
+                    editingUser.email && (editingUser.email.endsWith("@hometeadata.local") || editingUser.email.endsWith("@nguonnhapk.local"))
+                      ? `${editingUser.email.replace(/@(hometeadata|nguonnhapk)\.local$/i, "")} (@hometeadata.local)`
                       : (editingUser.email || "")
                   }
                   className="w-full px-3 py-2.5 rounded-xl border custom-border bg-black/5 dark:bg-white/5 text-slate-400 text-xs sm:text-sm font-mono cursor-not-allowed"
@@ -1132,8 +1132,8 @@ ON CONFLICT (id) DO UPDATE SET
               <p className="text-xs custom-text-secondary">
                 Hành động này sẽ xóa hoàn toàn tài khoản{" "}
                 <b>
-                  {deletingUser.email && deletingUser.email.endsWith("@nguonnhapk.local")
-                    ? deletingUser.email.replace("@nguonnhapk.local", "")
+                  {deletingUser.email && (deletingUser.email.endsWith("@hometeadata.local") || deletingUser.email.endsWith("@nguonnhapk.local"))
+                    ? deletingUser.email.replace(/@(hometeadata|nguonnhapk)\.local$/i, "")
                     : (deletingUser.email || "")}
                 </b>{" "}
                 khỏi <b>Supabase Auth</b> và bảng <b>profiles</b>. Người dùng sẽ không thể truy cập lại hệ thống.
@@ -1150,8 +1150,8 @@ ON CONFLICT (id) DO UPDATE SET
               <div className="text-slate-500">
                 Tài khoản:{" "}
                 <span className="custom-text-primary font-semibold">
-                  {deletingUser.email && deletingUser.email.endsWith("@nguonnhapk.local")
-                    ? `${deletingUser.email.replace("@nguonnhapk.local", "")} (@nguonnhapk.local)`
+                  {deletingUser.email && (deletingUser.email.endsWith("@hometeadata.local") || deletingUser.email.endsWith("@nguonnhapk.local"))
+                    ? `${deletingUser.email.replace(/@(hometeadata|nguonnhapk)\.local$/i, "")} (@hometeadata.local)`
                     : (deletingUser.email || "")}
                 </span>
               </div>

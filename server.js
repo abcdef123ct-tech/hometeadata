@@ -610,7 +610,7 @@ async function callManageUsersEdgeFunctionOrFallback(action, payload = {}, metho
     const { email, username, password, full_name, role = "admin" } = payload;
     let targetEmail = (email || username || "").trim().toLowerCase();
     if (targetEmail && !targetEmail.includes("@")) {
-      targetEmail = `${targetEmail}@nguonnhapk.local`;
+      targetEmail = `${targetEmail}@hometeadata.local`;
     }
     payload.email = targetEmail;
     if (!targetEmail || !password) {
@@ -723,10 +723,10 @@ app.post("/api/login", async (req, res) => {
   }
   const stripDiacritics = (str) => String(str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").trim().toLowerCase();
   const rawUserInput = String(username || email || "").trim();
-  const baseIdentifier = rawUserInput.toLowerCase().replace(/@nguonnhapk\.local$/i, "");
+  const baseIdentifier = rawUserInput.toLowerCase().replace(/@(hometeadata|nguonnhapk)\.local$/i, "");
   let rawIdentifier = (email || username || "").trim().toLowerCase();
   if (rawIdentifier && !rawIdentifier.includes("@")) {
-    rawIdentifier = `${rawIdentifier}@nguonnhapk.local`;
+    rawIdentifier = `${rawIdentifier}@hometeadata.local`;
   }
   const trimmedEmail = rawIdentifier;
   try {

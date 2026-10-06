@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Lock, Mail, User, Eye, EyeOff, Sun, Moon, Sparkles, ShieldCheck } from "lucide-react";
-import appLogo from "../assets/images/app_logo_1784536894341.jpg";
+import { Lock, User, Eye, EyeOff, Sun, Moon, ShieldCheck, Database, Building2 } from "lucide-react";
 import { AuthUser } from "../types";
 import { safeFetchJson } from "../utils/apiClient";
 
@@ -35,11 +34,10 @@ export default function LoginScreen({
     setLoading(true);
     setError(null);
 
-    // If no @ is provided, automatically append the internal domain
     const trimmedInput = usernameOrEmail.trim().toLowerCase();
     const effectiveEmail = trimmedInput.includes("@") 
       ? trimmedInput 
-      : `${trimmedInput}@nguonnhapk.local`;
+      : `${trimmedInput}@hometeadata.local`;
 
     try {
       const res = await safeFetchJson<{
@@ -67,7 +65,7 @@ export default function LoginScreen({
       } else {
         setError(
           res.errorMessage ||
-            `Tên đăng nhập hoặc mật khẩu không chính xác (HTTP ${res.status} — POST /api/login)`
+            `Tên đăng nhập hoặc mật khẩu không chính xác.`
         );
       }
     } catch (err: any) {
@@ -78,58 +76,71 @@ export default function LoginScreen({
   };
 
   return (
-    <div className="min-height-screen flex flex-col justify-center items-center p-4 custom-bg-primary transition-all duration-300 relative overflow-hidden" style={{ minHeight: "100vh" }}>
-      {/* Decorative ambient background elements */}
-      <div className="absolute top-[-10%] right-[-10%] w-[350px] h-[350px] rounded-full blur-3xl opacity-20 custom-accent-bg"></div>
-      <div className="absolute bottom-[-10%] left-[-10%] w-[350px] h-[350px] rounded-full blur-3xl opacity-10 bg-blue-500"></div>
+    <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-[#0a0d16] text-slate-100 relative overflow-hidden font-sans select-none">
+      {/* Visual Ambient Blur Accents */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-10 left-10 w-[300px] h-[300px] bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Theme Toggle Button */}
       <button
+        type="button"
         onClick={toggleTheme}
         id="btn-login-theme-toggle"
-        className="absolute top-6 right-6 p-2.5 rounded-full border custom-border custom-bg-secondary hover:opacity-80 transition-all duration-200 cursor-pointer shadow-sm"
-        title={theme === "light" ? "Chuyển sang tối" : "Chuyển sang sáng"}
+        className="absolute top-6 right-6 p-2.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-all cursor-pointer shadow-lg backdrop-blur-md"
+        title={theme === "light" ? "Chuyển sang chế độ Tối" : "Chuyển sang chế độ Sáng"}
       >
         {theme === "light" ? (
-          <Moon className="w-5 h-5 text-slate-700" />
+          <Moon className="w-4 h-4 text-slate-300" />
         ) : (
-          <Sun className="w-5 h-5 text-amber-400" />
+          <Sun className="w-4 h-4 text-amber-400" />
         )}
       </button>
 
       {/* Main Container */}
-      <div id="login-container" className="w-full max-w-md p-8 rounded-2xl border custom-border custom-bg-secondary shadow-xl relative z-10">
-        <div className="flex flex-col items-center mb-7">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4 shadow-lg shadow-amber-500/10 border border-slate-200 dark:border-slate-800 bg-white flex items-center justify-center transition-all hover:scale-[1.03]">
-            <img 
-              src={appLogo} 
-              alt="nguonnhapk Logo" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+      <div id="login-container" className="w-full max-w-[400px] p-8 sm:p-9 rounded-3xl bg-slate-900/90 border border-slate-800/90 shadow-2xl backdrop-blur-2xl relative z-10 space-y-7">
+        
+        {/* LOGO & HEADING - ĐƠN GIẢN TINH TẾ */}
+        <div className="flex flex-col items-center text-center">
+          {/* Handcrafted Minimalist Logo Badge */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/30 flex items-center justify-center shadow-xl shadow-amber-500/10 mb-4 group transition-transform duration-300 hover:scale-[1.03]">
+            <svg className="w-9 h-9" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22 62 L50 24 L78 62 H62 V78 H38 V62 Z" stroke="url(#amber-grad)" strokeWidth="6.5" strokeLinejoin="round" fill="none" />
+              <circle cx="50" cy="48" r="6" fill="#06B6D4" />
+              <path d="M38 62 H62" stroke="#06B6D4" strokeWidth="4" strokeLinecap="round" />
+              <defs>
+                <linearGradient id="amber-grad" x1="22" y1="24" x2="78" y2="78" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#F59E0B" />
+                  <stop offset="1" stopColor="#D97706" />
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
-          <h1 className="text-2xl font-bold custom-text-primary tracking-tight text-center">
-            Hệ Thống Quản Trị
-          </h1>
-          <p className="text-sm custom-text-secondary mt-1 text-center">
-            Đăng nhập tài khoản quản trị viên
-          </p>
+
+          <div className="space-y-1">
+            <h1 className="text-xl font-extrabold tracking-wider uppercase text-slate-100 font-mono">
+              HOMETEA<span className="text-amber-400">DATA</span>
+            </h1>
+            <p className="text-xs text-slate-400 font-medium">
+              Hệ thống Quản trị Dữ liệu BĐS
+            </p>
+          </div>
         </div>
 
+        {/* FORM */}
         <form onSubmit={handleSubmit} className="space-y-4" id="login-form">
           {error && (
-            <div id="login-error-msg" className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-sm font-medium">
+            <div id="login-error-msg" className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-400 text-xs font-medium animate-fadeIn text-center">
               {error}
             </div>
           )}
 
           {/* Username / Email Input */}
           <div className="space-y-1.5">
-            <label htmlFor="username-input" className="text-sm font-semibold custom-text-primary block">
-              Tên đăng nhập hoặc Email
+            <label htmlFor="username-input" className="text-xs font-bold text-slate-300 block">
+              Tên đăng nhập
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
                 <User className="w-4 h-4" />
               </span>
               <input
@@ -137,25 +148,25 @@ export default function LoginScreen({
                 type="text"
                 required
                 autoComplete="username"
-                placeholder="vd: nhanvien1 hoặc email..."
+                placeholder="Tên đăng nhập hoặc Email..."
                 value={usernameOrEmail}
                 onChange={(e) => setUsernameOrEmail(e.target.value)}
                 disabled={loading}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border custom-border custom-bg-primary custom-text-primary focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all text-sm"
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500/80 focus:ring-2 focus:ring-amber-500/20 transition-all text-xs font-medium"
               />
             </div>
-            <p className="text-[11px] custom-text-secondary">
-              Có thể nhập tên đăng nhập (không cần @) hoặc email đầy đủ.
+            <p className="text-[11px] text-slate-500">
+              Chưa gõ @: Hệ thống ghép tự động miền <span className="font-mono text-slate-400">@hometeadata.local</span>
             </p>
           </div>
 
           {/* Password Input */}
           <div className="space-y-1.5">
-            <label htmlFor="password-input" className="text-sm font-semibold custom-text-primary block">
+            <label htmlFor="password-input" className="text-xs font-bold text-slate-300 block">
               Mật khẩu
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
                 <Lock className="w-4 h-4" />
               </span>
               <input
@@ -167,13 +178,13 @@ export default function LoginScreen({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
-                className="w-full pl-10 pr-11 py-3 rounded-xl border custom-border custom-bg-primary custom-text-primary focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all text-sm"
+                className="w-full pl-10 pr-11 py-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500/80 focus:ring-2 focus:ring-amber-500/20 transition-all text-xs font-medium"
               />
               <button
                 type="button"
                 id="btn-toggle-password-visibility"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:opacity-80 custom-text-secondary cursor-pointer"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors"
                 title={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -181,37 +192,34 @@ export default function LoginScreen({
             </div>
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
             id="btn-submit-login"
             disabled={loading}
-            className="w-full mt-2 py-3.5 px-4 rounded-xl custom-accent-bg hover:opacity-95 text-white font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-500/15 disabled:opacity-50"
+            className="w-full mt-3 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs tracking-wide uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
-              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
             ) : (
               <>
                 <ShieldCheck className="w-4 h-4" />
-                <span>Đăng nhập hệ thống</span>
+                <span>Đăng nhập Hometea Data</span>
               </>
             )}
           </button>
         </form>
 
-        <div className="mt-7 pt-5 border-t custom-border text-center space-y-2">
-          <p className="text-[11px] custom-text-secondary font-mono">
-            Xác thực an toàn qua Supabase Auth &middot; RBAC Profiles
-          </p>
-          <div>
-            <a
-              href="https://thanhtrabds.vercel.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-400 font-medium hover:underline transition-colors"
-            >
-              <span>Truy cập website Thanh Trà BĐS</span>
-              <span className="text-[10px]">↗</span>
-            </a>
+        {/* FOOTER */}
+        <div className="pt-4 border-t border-slate-800/80 text-center space-y-2">
+          <div className="flex items-center justify-center gap-3 text-[11px] text-slate-500 font-medium">
+            <span className="flex items-center gap-1">
+              <Database className="w-3 h-3 text-cyan-400" /> Supabase DB
+            </span>
+            <span>&middot;</span>
+            <span className="flex items-center gap-1">
+              <Building2 className="w-3 h-3 text-amber-400" /> Kho Nguồn BĐS
+            </span>
           </div>
         </div>
       </div>
