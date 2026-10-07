@@ -223,6 +223,9 @@ export interface NormalizedWarehouseProperty {
   link_thien_khoi: string;
   link_ban_do: string;
   ngay_lay: string | null;
+  da_ban: boolean;
+  ngay_ban: string | null;
+  ghi_chu_ban: string | null;
 
   // Cờ kiểm tra chất lượng dữ liệu
   isAbnormalPricePerM2: boolean;
@@ -724,6 +727,23 @@ export function normalizePropertyRecord(
     }
   }
 
+  // Trạng thái đã bán trực tiếp từ bảng chu_nha_can_ban
+  const rawDaBan: any = safeProp.da_ban;
+  const isExplicitlyActive = rawDaBan === false || rawDaBan === "false" || rawDaBan === 0;
+  const da_ban = isExplicitlyActive
+    ? false
+    : Boolean(
+        rawDaBan === true ||
+        rawDaBan === "true" ||
+        rawDaBan === 1 ||
+        rawDaBan === "1" ||
+        safeProp.trang_thai_kinh_doanh === "da_ban" ||
+        safeProp.status === "da_ban" ||
+        safeProp.trang_thai_nguon === "đã bán"
+      );
+  const ngay_ban = (safeProp.ngay_ban || "").trim() || null;
+  const ghi_chu_ban = (safeProp.ghi_chu_ban || "").trim() || null;
+
   // 7.5. Các trường Bóc tách bằng AI (Chỉ lấy từ dữ liệu đã bóc tách / sửa tay, không tự đoán)
   const nguon_trich_xuat: NguonTrichXuatMap =
     safeProp.nguon_trich_xuat && typeof safeProp.nguon_trich_xuat === "object"
@@ -882,13 +902,13 @@ export function normalizePropertyRecord(
 
   // 9. Ánh xạ 2 cột trạng thái: trang_thai_kinh_doanh & trang_thai_xu_ly
   let trang_thai_kinh_doanh: BusinessStatusType = "nguon_tho";
-  if (
+  if (da_ban) {
+    trang_thai_kinh_doanh = "da_ban";
+  } else if (
     safeProp.trang_thai_kinh_doanh &&
-    ["nguon_tho", "da_ky", "da_ban"].includes(safeProp.trang_thai_kinh_doanh)
+    ["nguon_tho", "da_ky"].includes(safeProp.trang_thai_kinh_doanh)
   ) {
     trang_thai_kinh_doanh = safeProp.trang_thai_kinh_doanh;
-  } else if (safeProp.status === "da_ban" || safeProp.trang_thai_nguon === "đã bán") {
-    trang_thai_kinh_doanh = "da_ban";
   } else if (safeProp.status === "da_ky" || safeProp.status === "da_chot") {
     trang_thai_kinh_doanh = "da_ky";
   } else {
@@ -1027,6 +1047,9 @@ export function normalizePropertyRecord(
     link_thien_khoi,
     link_ban_do,
     ngay_lay,
+    da_ban,
+    ngay_ban,
+    ghi_chu_ban,
     isAbnormalPricePerM2,
     abnormalPriceReason,
     needsAreaReview: areaCheck.needsReview,

@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   MapPin,
   Clock,
+  Tag,
 } from "lucide-react";
 import {
   BulkPropertyItem,
@@ -2211,6 +2212,11 @@ export default function BulkFolderImportModal({
                             {item.previewStatus === "da_co" && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/30 font-bold text-[11px]">
                                 <Database className="w-3 h-3" /> Đã có
+                              </span>
+                            )}
+                            {Boolean(item.existingRecord?.da_ban || item.existingRecord?._stored_da_ban) && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 font-extrabold text-[11px]">
+                                <Tag className="w-3 h-3" /> Đã bán
                               </span>
                             )}
                             {item.previewStatus === "thieu_thong_tin" && (

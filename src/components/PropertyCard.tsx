@@ -56,6 +56,8 @@ interface PropertyCardProps {
   onEdit?: (e: React.MouseEvent) => void;
   onDelete?: (e: React.MouseEvent) => void;
   onPostHometea?: (e: React.MouseEvent) => void;
+  onMarkSold?: (e: React.MouseEvent) => void;
+  onRestoreSold?: (e: React.MouseEvent) => void;
   onClick?: () => void;
   onStatusChange?: (e: React.MouseEvent, newStatus: PropertyStatus) => void;
   selected?: boolean;
@@ -71,6 +73,8 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
   onEdit = () => {},
   onDelete = () => {},
   onPostHometea,
+  onMarkSold,
+  onRestoreSold,
   onClick = () => {},
   selected,
   isSelected,
@@ -240,13 +244,19 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             </span>
           </div>
 
-          {/* Top Right: 2 cột trạng thái */}
+          {/* Top Right: 2 cột trạng thái + Đã bán chip */}
           <div className="absolute top-2.5 right-2.5 flex items-center gap-1 z-10">
-            <span
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border backdrop-blur-md ${kdMeta.badgeClass}`}
-            >
-              {kdMeta.shortLabel}
-            </span>
+            {norm.da_ban ? (
+              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold border backdrop-blur-md bg-rose-600 text-white border-rose-400 shadow-md">
+                ĐÃ BÁN
+              </span>
+            ) : (
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold border backdrop-blur-md ${kdMeta.badgeClass}`}
+              >
+                {kdMeta.shortLabel}
+              </span>
+            )}
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-bold border backdrop-blur-md ${xlMeta.badgeClass}`}
             >
@@ -415,16 +425,41 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           className="flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          {onPostHometea && (
-            <button
-              type="button"
-              onClick={onPostHometea}
-              className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-all shadow-sm shrink-0"
-              title="Đăng tin trực tiếp lên Hometea"
-            >
-              <Send className="w-3 h-3" />
-              <span>🚀 Đăng Hometea</span>
-            </button>
+          {norm.da_ban ? (
+            onRestoreSold && (
+              <button
+                type="button"
+                onClick={onRestoreSold}
+                className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold cursor-pointer shrink-0"
+                title="Khôi phục tin về danh sách Đang bán"
+              >
+                🔄 Khôi phục
+              </button>
+            )
+          ) : (
+            <>
+              {onMarkSold && (
+                <button
+                  type="button"
+                  onClick={onMarkSold}
+                  className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold cursor-pointer shrink-0"
+                  title="Đánh dấu tin này đã bán"
+                >
+                  🏷️ Đã bán
+                </button>
+              )}
+              {onPostHometea && (
+                <button
+                  type="button"
+                  onClick={onPostHometea}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-all shadow-sm shrink-0"
+                  title="Đăng tin trực tiếp lên Hometea"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>🚀 Đăng Hometea</span>
+                </button>
+              )}
+            </>
           )}
           <button
             type="button"

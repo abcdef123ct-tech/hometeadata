@@ -37,6 +37,7 @@ interface WarehouseEditDrawerProps {
   onSave: (id: string, updates: Partial<Property>) => Promise<void>;
   onDelete?: (prop: Property) => void;
   onPostHometea?: (prop: NormalizedWarehouseProperty) => void;
+  onToggleSold?: (prop: NormalizedWarehouseProperty) => void;
   currentUser?: AuthUser | null;
   allItems?: NormalizedWarehouseProperty[];
   onSelectProperty?: (id: string) => void;
@@ -49,6 +50,7 @@ export default function WarehouseEditDrawer({
   onSave,
   onDelete,
   onPostHometea,
+  onToggleSold,
   currentUser,
   allItems = [],
   onSelectProperty,
@@ -313,6 +315,13 @@ export default function WarehouseEditDrawer({
             <span className="font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-bold shrink-0">
               {maTk || "MÃ MỚI"}
             </span>
+
+            {/* Chip đỏ ĐÃ BÁN nếu da_ban = true */}
+            {item?.da_ban && (
+              <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs font-extrabold shrink-0">
+                ĐÃ BÁN {formatNgayLayDisplay(item.ngay_ban).formatted || ""}
+              </span>
+            )}
 
             {/* Ngày lấy cạnh mã TK */}
             {(() => {
@@ -829,12 +838,32 @@ export default function WarehouseEditDrawer({
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             {saveMessage && <span className="text-xs text-emerald-400 font-medium animate-fadeIn">{saveMessage}</span>}
 
+            {onToggleSold && item && (
+              <button
+                type="button"
+                onClick={() => onToggleSold(item)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                  item.da_ban
+                    ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20"
+                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                }`}
+                title={item.da_ban ? "Khôi phục tin về Đang bán" : "Đánh dấu tin đã bán"}
+              >
+                <span>{item.da_ban ? "🔄 Khôi phục" : "🏷️ Đã bán"}</span>
+              </button>
+            )}
+
             {onPostHometea && item && (
               <button
                 type="button"
-                onClick={() => onPostHometea(item)}
-                className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-extrabold transition-all shadow-md shadow-cyan-600/20 flex items-center gap-1.5 cursor-pointer shrink-0"
-                title="Đăng trực tiếp tin này lên Hometea"
+                disabled={Boolean(item.da_ban)}
+                onClick={() => !item.da_ban && onPostHometea(item)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 shrink-0 ${
+                  item.da_ban
+                    ? "bg-slate-800 text-slate-500 opacity-40 cursor-not-allowed border border-slate-700"
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20 cursor-pointer"
+                }`}
+                title={item.da_ban ? "Tin đã bán" : "Đăng trực tiếp tin này lên Hometea"}
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>🚀 Đăng lên Hometea</span>

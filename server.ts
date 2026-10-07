@@ -2515,6 +2515,10 @@ const KNOWN_CHU_NHA_DB_COLUMNS = new Set<string>([
   "dac_diem",
   "hien_trang",
   "nguon_trich_xuat",
+  "da_ban",
+  "ngay_ban",
+  "ghi_chu_ban",
+  "ngay_lay",
 ]);
 
 function sanitizeChuNhaDbPayload(rawPayload: Record<string, any>): Record<string, any> {
@@ -2709,6 +2713,7 @@ app.post("/api/properties/check-ma-tk", authenticateAdmin, async (req, res) => {
       return {
         ...(meta || {}),
         ...row,
+        _stored_da_ban: Boolean(row.da_ban),
         _stored_ngay_lay: storedNgayLay.iso,
         _stored_ngay_lay_raw: storedNgayLay.raw,
         _manually_edited_fields: Array.isArray(meta?.manually_edited_fields)
@@ -3613,6 +3618,10 @@ const handleUpdateProperty = async (req: any, res: any) => {
       da_xac_nhan_ai,
       ngay_boc_tach_ai,
       ai_manual_fields,
+      da_ban,
+      ngay_ban,
+      ghi_chu_ban,
+      ngay_lay,
     } = req.body;
 
     // Check ownership if user is staff
@@ -3778,6 +3787,35 @@ const handleUpdateProperty = async (req: any, res: any) => {
     if (ngay_boc_tach_ai !== undefined) extendedFields.ngay_boc_tach_ai = ngay_boc_tach_ai;
     if (ai_manual_fields !== undefined && Array.isArray(ai_manual_fields)) {
       extendedFields.ai_manual_fields = ai_manual_fields;
+    }
+
+    if (da_ban !== undefined) {
+      const isSold = Boolean(da_ban === true || da_ban === "true" || da_ban === 1 || da_ban === "1");
+      extendedFields.da_ban = isSold;
+      supabasePayload.da_ban = isSold;
+      if (isSold) {
+        extendedFields.trang_thai_kinh_doanh = "da_ban";
+        supabasePayload.trang_thai_kinh_doanh = "da_ban";
+        supabasePayload.status = "da_ban";
+      } else {
+        if (extendedFields.trang_thai_kinh_doanh === "da_ban" || supabasePayload.trang_thai_kinh_doanh === "da_ban") {
+          extendedFields.trang_thai_kinh_doanh = "nguon_tho";
+          supabasePayload.trang_thai_kinh_doanh = "nguon_tho";
+          supabasePayload.status = "moi";
+        }
+      }
+    }
+    if (ngay_ban !== undefined) {
+      extendedFields.ngay_ban = ngay_ban ? String(ngay_ban).trim() : null;
+      supabasePayload.ngay_ban = extendedFields.ngay_ban;
+    }
+    if (ghi_chu_ban !== undefined) {
+      extendedFields.ghi_chu_ban = ghi_chu_ban ? String(ghi_chu_ban).trim() : null;
+      supabasePayload.ghi_chu_ban = extendedFields.ghi_chu_ban;
+    }
+    if (ngay_lay !== undefined) {
+      extendedFields.ngay_lay = parseServerNgayLayDate(ngay_lay) || (ngay_lay ? String(ngay_lay).trim() : null);
+      supabasePayload.ngay_lay = extendedFields.ngay_lay;
     }
 
     Object.assign(supabasePayload, extendedFields);
@@ -3960,6 +3998,10 @@ const handleUpdateProperty = async (req: any, res: any) => {
         if (supabasePayload.image_urls !== undefined) basePayload.image_urls = supabasePayload.image_urls;
         if (supabasePayload.loai_giao_dich !== undefined) basePayload.loai_giao_dich = supabasePayload.loai_giao_dich;
         if (supabasePayload.status !== undefined) basePayload.status = supabasePayload.status;
+        if (supabasePayload.da_ban !== undefined) basePayload.da_ban = supabasePayload.da_ban;
+        if (supabasePayload.ngay_ban !== undefined) basePayload.ngay_ban = supabasePayload.ngay_ban;
+        if (supabasePayload.ghi_chu_ban !== undefined) basePayload.ghi_chu_ban = supabasePayload.ghi_chu_ban;
+        if (supabasePayload.ngay_lay !== undefined) basePayload.ngay_lay = supabasePayload.ngay_lay;
 
         updateResult = await supabase
           .from("chu_nha_can_ban")
@@ -4181,6 +4223,28 @@ app.post("/api/properties/bulk-action", authenticateAdmin, async (req: any, res)
             if (changes.trang_thai_kinh_doanh === "da_ban") rawDbUpdate.status = "da_ban";
             else if (changes.trang_thai_kinh_doanh === "da_ky") rawDbUpdate.status = "da_ky";
             else rawDbUpdate.status = "moi";
+          }
+          if (changes.da_ban !== undefined) {
+            const isSold = Boolean(changes.da_ban === true || changes.da_ban === "true" || changes.da_ban === 1 || changes.da_ban === "1");
+            rawDbUpdate.da_ban = isSold;
+            if (isSold) {
+              rawDbUpdate.trang_thai_kinh_doanh = "da_ban";
+              rawDbUpdate.status = "da_ban";
+            } else {
+              if (rawDbUpdate.trang_thai_kinh_doanh === "da_ban") {
+                rawDbUpdate.trang_thai_kinh_doanh = "nguon_tho";
+                rawDbUpdate.status = "moi";
+              }
+            }
+          }
+          if (changes.ngay_ban !== undefined) {
+            rawDbUpdate.ngay_ban = changes.ngay_ban ? String(changes.ngay_ban).trim() : null;
+          }
+          if (changes.ghi_chu_ban !== undefined) {
+            rawDbUpdate.ghi_chu_ban = changes.ghi_chu_ban ? String(changes.ghi_chu_ban).trim() : null;
+          }
+          if (changes.ngay_lay !== undefined) {
+            rawDbUpdate.ngay_lay = parseServerNgayLayDate(changes.ngay_lay) || (changes.ngay_lay ? String(changes.ngay_lay).trim() : null);
           }
 
           const dbUpdate = sanitizeChuNhaDbPayload(rawDbUpdate);

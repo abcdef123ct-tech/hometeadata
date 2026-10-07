@@ -13,6 +13,7 @@ import {
   Sparkles,
   CheckSquare,
   Square,
+  Tag,
 } from "lucide-react";
 import {
   Property,
@@ -50,6 +51,7 @@ import WarehouseEditDrawer from "./components/WarehouseEditDrawer";
 import MigrationProposalModal from "./components/MigrationProposalModal";
 import DataQualityView from "./components/DataQualityView";
 import ExportLogsView from "./components/ExportLogsView";
+import SoldConfirmModal from "./components/SoldConfirmModal";
 import SmartImage from "./components/SmartImage";
 import { Navbar, ActiveTabType } from "./components/Navbar";
 import { PropertyCard } from "./components/PropertyCard";
@@ -95,6 +97,7 @@ export default function App() {
     "all" | "needs_confirm" | "extracted" | "unextracted"
   >("all");
   const [filterNgayLay, setFilterNgayLay] = useState<string>("all");
+  const [filterSoldState, setFilterSoldState] = useState<"active" | "sold" | "all">("active");
   const [sortBy, setSortBy] = useState<string>(() => {
     return localStorage.getItem("warehouse_sort_by") || "ngay_lay_desc";
   });
@@ -170,6 +173,11 @@ export default function App() {
   // Hometea postMessage posting state
   const [hometeaPostingId, setHometeaPostingId] = useState<string | null>(null);
   const [hometeaStatusMsg, setHometeaStatusMsg] = useState<string | null>(null);
+
+  // Sold Modal State
+  const [soldModalItems, setSoldModalItems] = useState<NormalizedWarehouseProperty[]>([]);
+  const [isSoldModalOpen, setIsSoldModalOpen] = useState<boolean>(false);
+  const [isSoldModalRestore, setIsSoldModalRestore] = useState<boolean>(false);
 
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
@@ -322,6 +330,20 @@ export default function App() {
   const handleSaveProperty = async (id: string, updates: Partial<Property>) => {
     try {
       const isNew = id === "new";
+      if (!isNew) {
+        setProperties((prev) =>
+          prev.map((item) => {
+            if (item.id === id) {
+              return {
+                ...item,
+                ...updates,
+              };
+            }
+            return item;
+          })
+        );
+      }
+
       const url = isNew ? "/api/properties" : `/api/properties/${id}`;
       const method = isNew ? "POST" : "PUT";
 
@@ -511,6 +533,68 @@ export default function App() {
       alert("Lỗi kết nối: " + err.message);
     } finally {
       setBulkActionLoading(false);
+    }
+  };
+
+  // Sold status handlers
+  const handleOpenSoldModal = (itemsArr: NormalizedWarehouseProperty[], isRestore = false) => {
+    setSoldModalItems(itemsArr);
+    setIsSoldModalRestore(isRestore);
+    setIsSoldModalOpen(true);
+  };
+
+  const handleSaveSoldStatus = async ({
+    ngay_ban,
+    ghi_chu_ban,
+    isRestore,
+  }: {
+    ngay_ban: string | null;
+    ghi_chu_ban: string | null;
+    isRestore: boolean;
+  }) => {
+    if (soldModalItems.length === 0) return;
+
+    // Cập nhật lạc quan (optimistic update) ngay lập tức trên frontend
+    const soldIds = new Set(soldModalItems.map((x) => x.id));
+    setProperties((prev) =>
+      prev.map((item) => {
+        if (soldIds.has(item.id)) {
+          return {
+            ...item,
+            da_ban: !isRestore,
+            ngay_ban: isRestore ? null : ngay_ban,
+            ghi_chu_ban: isRestore ? null : ghi_chu_ban,
+            trang_thai_kinh_doanh: isRestore ? "nguon_tho" : "da_ban",
+            status: isRestore ? "moi" : "da_ban",
+          };
+        }
+        return item;
+      })
+    );
+
+    setBulkActionLoading(true);
+    try {
+      for (const it of soldModalItems) {
+        await handleSaveProperty(it.id, {
+          da_ban: !isRestore,
+          ngay_ban: isRestore ? null : ngay_ban,
+          ghi_chu_ban: isRestore ? null : ghi_chu_ban,
+          trang_thai_kinh_doanh: isRestore ? "nguon_tho" : "da_ban",
+          status: isRestore ? "moi" : "da_ban",
+        });
+      }
+      showToast(
+        isRestore
+          ? `Đã khôi phục ${soldModalItems.length} tin về Đang bán!`
+          : `Đã đánh dấu ĐÃ BÁN ${soldModalItems.length} tin!`
+      );
+    } catch (err: any) {
+      alert("Lỗi cập nhật trạng thái đã bán: " + (err?.message || err));
+    } finally {
+      setBulkActionLoading(false);
+      setSoldModalItems([]);
+      setIsSoldModalOpen(false);
+      setRefreshTrigger((prev) => prev + 1);
     }
   };
 
@@ -787,6 +871,15 @@ export default function App() {
         }
       }
 
+      // 1.5. Trạng thái bán (Đang bán | Đã bán | Tất cả)
+      const isItemSold = Boolean(it.da_ban || it.trang_thai_kinh_doanh === "da_ban");
+      if (filterSoldState === "active" && isItemSold) {
+        return false;
+      }
+      if (filterSoldState === "sold" && !isItemSold) {
+        return false;
+      }
+
       // 2. Business Status (nguon_tho, da_ky, da_ban)
       if (filterBusinessStatus !== "all" && it.trang_thai_kinh_doanh !== filterBusinessStatus) {
         return false;
@@ -839,6 +932,15 @@ export default function App() {
     });
 
     return itemsArr.sort((a, b) => {
+      // Khi chọn "Tất cả", tin đã bán luôn xếp dưới cùng
+      if (filterSoldState === "all") {
+        const isSoldA = Boolean(a.da_ban || a.trang_thai_kinh_doanh === "da_ban");
+        const isSoldB = Boolean(b.da_ban || b.trang_thai_kinh_doanh === "da_ban");
+        if (isSoldA !== isSoldB) {
+          return isSoldA ? 1 : -1;
+        }
+      }
+
       const getCreatedAtTime = (item: NormalizedWarehouseProperty) => {
         const raw = item.raw?.created_at || item.raw?.ngay_nhap;
         if (!raw) return 0;
@@ -886,6 +988,7 @@ export default function App() {
   }, [
     normalizedProperties,
     searchQuery,
+    filterSoldState,
     filterBusinessStatus,
     filterProcessingStatus,
     filterDistrict,
@@ -942,6 +1045,17 @@ export default function App() {
       else if (p.trang_thai_kinh_doanh === "da_ban") counts.da_ban++;
     });
     return counts;
+  }, [normalizedProperties]);
+
+  // Counters for active vs sold items
+  const soldStateCounts = useMemo(() => {
+    let active = 0;
+    let sold = 0;
+    normalizedProperties.forEach((p) => {
+      if (p.da_ban || p.trang_thai_kinh_doanh === "da_ban") sold++;
+      else active++;
+    });
+    return { active, sold, total: normalizedProperties.length };
   }, [normalizedProperties]);
 
   const activeDrawerItem = useMemo(() => {
@@ -1014,30 +1128,74 @@ export default function App() {
         {activeTab === "properties" && (
           <div className="space-y-6">
             
-            {/* 1. DẢI BỘ LỌC KINH DOANH COMPACT (TẤT CẢ | THÔ | ĐÃ KÝ | ĐÃ BÁN) */}
-            <div className="flex flex-wrap items-center gap-2 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-2 shrink-0">
-                Kinh doanh:
-              </span>
-              <div className="flex items-center gap-1.5 flex-wrap">
+            {/* 1. DẢI BỘ LỌC TRẠNG THÁI BÁN & KINH DOANH */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-2 shrink-0">
+                  Trạng thái:
+                </span>
                 <button
                   type="button"
-                  onClick={() => setFilterBusinessStatus("all")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    filterBusinessStatus === "all"
+                  onClick={() => setFilterSoldState("active")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterSoldState === "active"
+                      ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                      : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
+                  }`}
+                  title="Hiện các tin đang giao bán (ẩn tin đã bán)"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Đang bán ({soldStateCounts.active})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterSoldState("sold")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterSoldState === "sold"
+                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
+                      : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
+                  }`}
+                  title="Chuyển sang mục xem danh sách tin đã bán"
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-400" />
+                  <span>Mục đã bán ({soldStateCounts.sold})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterSoldState("all")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterSoldState === "all"
                       ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10"
                       : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
                   }`}
+                  title="Xem toàn bộ nguồn nhà bao gồm cả tin đã bán"
                 >
-                  Tất cả ({normalizedProperties.length})
+                  <span>Tất cả ({soldStateCounts.total})</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-2 shrink-0">
+                  Kinh doanh:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFilterBusinessStatus("all")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                    filterBusinessStatus === "all"
+                      ? "bg-slate-800 text-slate-100 font-bold border border-slate-700"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Tất cả
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterBusinessStatus("nguon_tho")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
                     filterBusinessStatus === "nguon_tho"
-                      ? "bg-amber-500 text-slate-950 shadow-md"
-                      : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
+                      ? "bg-slate-800 text-amber-300 font-bold border border-amber-500/30"
+                      : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
                   Nguồn thô ({businessCounts.nguon_tho})
@@ -1045,24 +1203,13 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setFilterBusinessStatus("da_ky")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
                     filterBusinessStatus === "da_ky"
-                      ? "bg-amber-500 text-slate-950 shadow-md"
-                      : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
+                      ? "bg-slate-800 text-emerald-300 font-bold border border-emerald-500/30"
+                      : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
                   Đã ký ({businessCounts.da_ky})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterBusinessStatus("da_ban")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    filterBusinessStatus === "da_ban"
-                      ? "bg-amber-500 text-slate-950 shadow-md"
-                      : "bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700"
-                  }`}
-                >
-                  Đã bán ({businessCounts.da_ban})
                 </button>
               </div>
             </div>
@@ -1416,6 +1563,22 @@ export default function App() {
                       </button>
                     </div>
 
+                    {/* Đánh dấu đã bán hàng loạt */}
+                    <button
+                      type="button"
+                      disabled={selectedIds.size === 0 || bulkActionLoading}
+                      onClick={() => {
+                        const selectedList = filteredItems.filter((x) => selectedIds.has(x.id));
+                        if (selectedList.length > 0) {
+                          handleOpenSoldModal(selectedList, false);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 disabled:opacity-40 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                      title="Đánh dấu các tin đã chọn là ĐÃ BÁN"
+                    >
+                      🏷️ Đánh dấu đã bán ({selectedIds.size})
+                    </button>
+
                     <button
                       type="button"
                       disabled={selectedIds.size === 0 || bulkActionLoading}
@@ -1539,7 +1702,9 @@ export default function App() {
                             <tr
                               onClick={() => setDrawerItemId(it.id)}
                               className={`transition-colors cursor-pointer text-xs h-[56px] ${
-                                isDrawerOpen
+                                it.da_ban
+                                  ? "opacity-60 bg-rose-950/20 hover:bg-rose-950/30"
+                                  : isDrawerOpen
                                   ? "bg-amber-500/15 hover:bg-amber-500/20"
                                   : isSelected
                                   ? "bg-slate-800/80 hover:bg-slate-800"
@@ -1812,33 +1977,69 @@ export default function App() {
 
                               {/* Cột 5: Trạng thái (Chip xử lý & dòng nhỏ hometea chỉ đọc) */}
                               <td className="py-1 px-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${xlMeta.badgeClass}`}>
-                                  {xlMeta.label}
-                                </span>
+                                {it.da_ban ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-block shadow-xs">
+                                    ĐÃ BÁN {formatNgayLayDisplay(it.ngay_ban).formatted ? formatNgayLayDisplay(it.ngay_ban).formatted : ""}
+                                  </span>
+                                ) : (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${xlMeta.badgeClass}`}>
+                                    {xlMeta.label}
+                                  </span>
+                                )}
                                 <div className="text-[10px] text-slate-500 mt-1 truncate">
                                   Hometea: {it.hometea_trang_thai === "cong_khai" ? "Công khai" : it.hometea_trang_thai === "nhap" ? "Nháp" : "Chưa đăng"}
                                 </div>
                               </td>
 
-                              {/* Cột 6: Hành động (Đăng Hometea + Duyệt + mở rộng + xóa) */}
+                              {/* Cột 6: Hành động (Đăng Hometea + Duyệt + Đã bán / Khôi phục + Sửa + Xóa) */}
                               <td className="py-1 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-1.5 flex-nowrap">
-                                  <button
-                                    type="button"
-                                    disabled={hometeaPostingId === it.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handlePostToHometea(it);
-                                    }}
-                                    className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-[10px] font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                                    title="Đăng tin lên Hometea qua postMessage"
-                                  >
-                                    {hometeaPostingId === it.id ? (
-                                      <span>⏳ Đang chờ Hometea...</span>
-                                    ) : (
-                                      <span>🚀 Đăng Hometea</span>
-                                    )}
-                                  </button>
+                                  {!it.da_ban && (
+                                    <button
+                                      type="button"
+                                      disabled={hometeaPostingId === it.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePostToHometea(it);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-[10px] font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                                      title="Đăng tin lên Hometea qua postMessage"
+                                    >
+                                      {hometeaPostingId === it.id ? (
+                                        <span>⏳ Đang chờ Hometea...</span>
+                                      ) : (
+                                        <span>🚀 Đăng Hometea</span>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {/* Nút Đã bán / Khôi phục */}
+                                  {it.da_ban ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenSoldModal([it], true);
+                                      }}
+                                      className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold cursor-pointer transition-colors shrink-0"
+                                      title="Khôi phục tin về danh sách Đang bán"
+                                    >
+                                      🔄 Khôi phục
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenSoldModal([it], false);
+                                      }}
+                                      className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[10px] font-bold cursor-pointer transition-colors shrink-0"
+                                      title="Đánh dấu tin này đã bán"
+                                    >
+                                      🏷️ Đã bán
+                                    </button>
+                                  )}
+
                                   <button
                                     type="button"
                                     onClick={() => setDrawerItemId(it.id)}
@@ -1986,6 +2187,14 @@ export default function App() {
                       e.stopPropagation();
                       handlePostToHometea(it);
                     }}
+                    onMarkSold={(e) => {
+                      e.stopPropagation();
+                      handleOpenSoldModal([it], false);
+                    }}
+                    onRestoreSold={(e) => {
+                      e.stopPropagation();
+                      handleOpenSoldModal([it], true);
+                    }}
                   />
                 ) : null)}
               </div>
@@ -2054,6 +2263,7 @@ export default function App() {
           onSave={handleSaveProperty}
           onDelete={handleDeleteProperty}
           onPostHometea={handlePostToHometea}
+          onToggleSold={(it) => handleOpenSoldModal([it], Boolean(it.da_ban))}
           currentUser={currentUser}
           allItems={filteredItems}
           onSelectProperty={(id) => setDrawerItemId(id)}
@@ -2091,6 +2301,20 @@ export default function App() {
           onClose={() => setIsMigrationModalOpen(false)}
           onMigrationSuccess={() => setRefreshTrigger((prev) => prev + 1)}
           items={normalizedProperties}
+        />
+      )}
+
+      {/* MODAL XÁC NHẬN ĐÁNH DẤU ĐÃ BÁN / KHÔI PHỤC */}
+      {isSoldModalOpen && (
+        <SoldConfirmModal
+          isOpen={isSoldModalOpen}
+          onClose={() => {
+            setIsSoldModalOpen(false);
+            setSoldModalItems([]);
+          }}
+          onConfirm={handleSaveSoldStatus}
+          items={soldModalItems}
+          isRestore={isSoldModalRestore}
         />
       )}
 

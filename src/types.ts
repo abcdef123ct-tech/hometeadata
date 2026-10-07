@@ -162,6 +162,9 @@ export interface Property {
   loai_hinh?: string;
   trang_thai_nguon?: SourceStatusType;
   ngay_lay?: string | null;
+  da_ban?: boolean | null;
+  ngay_ban?: string | null;
+  ghi_chu_ban?: string | null;
 
   // Các trường Bóc tách bằng AI (Chỉ lấy từ văn bản, không có thì NULL)
   loai_vi_tri?: LoaiViTriType | null;
